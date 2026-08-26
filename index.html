@@ -215,15 +215,15 @@
       <div class="panel">
         <h2><span class="n">1</span> Colar os dados</h2>
         <ol class="steps">
-          <li><b>1.</b> Na sua planilha, selecione as colunas Barramento, Latitude e Longitude.</li>
+          <li><b>1.</b> Na sua planilha, selecione as colunas de Latitude e Longitude (o Barramento é opcional).</li>
           <li><b>2.</b> Copie (Ctrl+C) e cole aqui embaixo (Ctrl+V).</li>
-          <li><b>3.</b> Funciona com vírgula ou ponto decimal — o sistema ajusta sozinho.</li>
+          <li><b>3.</b> Funciona com vírgula ou ponto decimal, em qualquer ordem de coluna — o sistema ajusta sozinho.</li>
         </ol>
         <textarea id="input" placeholder="Barramento&#9;Latitude&#9;Longitude
 X034473&#9;-12,846030604&#9;-38,2763695469999
 X034474&#9;-12.845994052&#9;-38.2758902699999
 B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
-        <p class="hint">Aceita colar direto da planilha (tabulação), CSV com <code>;</code> ou com <code>,</code>. A primeira linha pode ser o cabeçalho — é detectada e ignorada sozinha.</p>
+        <p class="hint">Aceita colar direto da planilha (tabulação), CSV com <code>;</code> ou com <code>,</code>. A primeira linha pode ser o cabeçalho — é detectada e ignorada sozinha. <b>Sem coluna de Barramento?</b> Sem problema: cole só as duas colunas de Latitude e Longitude (nessa ordem ou invertida) que o sistema numera os postes sozinho (PONTO-1, PONTO-2...).</p>
         <div class="row">
           <button class="btn-primary" id="btnClassify">Identificar cidades</button>
           <button class="btn-ghost btn-sm" id="btnClear">Limpar</button>
@@ -256,9 +256,13 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
         <div class="row">
           <button class="btn-accent" id="btnKml">Baixar KMZ (pastas por cidade)</button>
           <button class="btn-ghost" id="btnKmzZip">Baixar KMZ separados (.zip)</button>
-          <button class="btn-ghost" id="btnCsv">Baixar tabela (CSV)</button>
         </div>
         <p class="hint" id="kmlHint">O primeiro é um único <code>.kmz</code> com uma pasta por cidade (liga/desliga cada uma no Google Earth). O segundo é um <code>.zip</code> com um <code>.kmz</code> separado para cada cidade. Marcador: bolinha branca com contorno preto, bem pequena.</p>
+        <div class="row">
+          <button class="btn-ghost" id="btnCsv">Baixar CSV geral (com cidade)</button>
+          <button class="btn-ghost" id="btnCsvZip">Baixar CSV separados por cidade (.zip)</button>
+        </div>
+        <p class="hint">O CSV geral é uma tabela só, com a coluna Cidade em cada linha. O <code>.zip</code> separado traz uma planilha por cidade, sem a coluna Cidade (o nome do arquivo já diz qual é).</p>
         <details class="raw">
           <summary>Ver / copiar o KML como texto</summary>
           <div class="row" style="margin-top:8px;">
@@ -472,6 +476,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     btnKml: document.getElementById('btnKml'),
     btnKmzZip: document.getElementById('btnKmzZip'),
     btnCsv: document.getElementById('btnCsv'),
+    btnCsvZip: document.getElementById('btnCsvZip'),
     btnCopyKml: document.getElementById('btnCopyKml'),
     btnCopyCsv: document.getElementById('btnCopyCsv'),
     rawOut: document.getElementById('rawOut'),
@@ -678,6 +683,15 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     return lines.join('\r\n');
   }
 
+  // CSV de uma única cidade, sem a coluna Cidade (o nome do arquivo já identifica)
+  function buildCityCSV(pts){
+    var lines = ['Barramento;Latitude;Longitude'];
+    pts.forEach(function(p){
+      lines.push(p.id+';'+p.lat.toFixed(9)+';'+p.lon.toFixed(9));
+    });
+    return lines.join('\r\n');
+  }
+
   function todayStamp(){
     return 'postes-por-cidade';
   }
@@ -797,7 +811,22 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     var csv = buildCSV();
     els.rawOut.value = csv;
     triggerDownload(csv, todayStamp()+'.csv', 'text/csv;charset=utf-8');
-    setStatus('Tabela baixada como .csv.', 'ok');
+    setStatus('Tabela geral baixada como .csv.', 'ok');
+  });
+
+  els.btnCsvZip.addEventListener('click', function(){
+    if (!lastResult) return;
+    setStatus('Montando os CSV separados...', 'busy');
+    setTimeout(function(){
+      var order = lastResult.order.slice().sort();
+      var entries = order.map(function(city){
+        var pts = lastResult.groups.get(city);
+        return { name: city.replace(/[\\/:*?"<>|]/g,'') + '.csv', data: buildCityCSV(pts) };
+      });
+      var zip = buildZip(entries);
+      triggerDownload(zip, 'csv-por-cidade.zip', 'application/zip');
+      setStatus(order.length + ' planilhas .csv (uma por cidade, sem a coluna Cidade) dentro do .zip.', 'ok');
+    }, 20);
   });
 
   function copyToClipboard(text, label){
