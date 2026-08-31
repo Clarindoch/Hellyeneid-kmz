@@ -361,6 +361,14 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
           <button class="btn-ghost" id="btnCsvZip">Baixar CSV separados por cidade (.zip)</button>
         </div>
         <p class="hint">O CSV geral é uma tabela só, com a coluna Cidade em cada linha. O <code>.zip</code> separado traz uma planilha por cidade, sem a coluna Cidade (o nome do arquivo já diz qual é). Os dois já saem com as colunas Tipo e Valor que você marcou no passo 3.</p>
+        <div class="row">
+          <button class="btn-ghost" id="btnCsvGoogle">Baixar CSV p/ Google My Maps</button>
+        </div>
+        <p class="hint">Separado por vírgula, com Latitude/Longitude em número puro (sem o símbolo de grau) — o formato que o Google My Maps reconhece sozinho ao importar. Importe esse arquivo direto no My Maps; não abra e salve de novo no Excel antes, porque o Excel em português pode trocar o ponto decimal da coordenada por vírgula e embaralhar tudo.</p>
+        <div class="row">
+          <button class="btn-ghost" id="btnCopyRota">Copiar Latitude/Longitude p/ Arquivo de Rota</button>
+        </div>
+        <p class="hint">Copia duas colunas — Latitude e Longitude — no mesmo formato do seu Arquivo de Rota (ex.: <code>-12.935997°</code>), uma linha por poste, na ordem da tabela do passo 3. Cole direto nas colunas Latitude/Longitude da planilha de rota, a partir da primeira linha vazia.</p>
         <details class="raw">
           <summary>Ver / copiar o KML como texto</summary>
           <div class="row" style="margin-top:8px;">
@@ -598,6 +606,8 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     btnKmzZip: document.getElementById('btnKmzZip'),
     btnCsv: document.getElementById('btnCsv'),
     btnCsvZip: document.getElementById('btnCsvZip'),
+    btnCsvGoogle: document.getElementById('btnCsvGoogle'),
+    btnCopyRota: document.getElementById('btnCopyRota'),
     btnCopyKml: document.getElementById('btnCopyKml'),
     btnCopyCsv: document.getElementById('btnCopyCsv'),
     rawOut: document.getElementById('rawOut'),
@@ -1031,6 +1041,47 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     return 'postes-por-cidade';
   }
 
+  // CSV pra importar no Google My Maps: separado por vírgula, decimal com ponto,
+  // sem símbolo de grau — evita qualquer confusão de locale do Excel na hora do import.
+  function valorGoogle(p){
+    return (p.tipo === 'Pago Coelba') ? (p.valor||0).toFixed(2) : '';
+  }
+  function csvField(s){
+    s = String(s == null ? '' : s);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+  function buildGoogleCSV(){
+    if (!lastResult) return '';
+    var order = lastResult.order.slice().sort();
+    var lines = ['Name,Latitude,Longitude,Cidade,Tipo,Valor'];
+    order.forEach(function(city){
+      lastResult.groups.get(city).forEach(function(p){
+        var name = city + ' - ' + p.id;
+        lines.push([
+          csvField(name), p.lat.toFixed(9), p.lon.toFixed(9),
+          csvField(city), csvField(p.tipo||'Não classificado'), valorGoogle(p)
+        ].join(','));
+      });
+    });
+    return lines.join('\r\n');
+  }
+
+  // Duas colunas (Latitude, Longitude) no formato de texto do Arquivo de Rota:
+  // "-12.935997°" com o símbolo de grau, prontas pra colar direto nas colunas
+  // Latitude/Longitude da planilha de rota (uma linha por poste).
+  function buildRotaPaste(){
+    if (!lastResult) return '';
+    var order = lastResult.order.slice().sort();
+    var lines = [];
+    order.forEach(function(city){
+      lastResult.groups.get(city).forEach(function(p){
+        lines.push(p.lat.toFixed(6)+'°\t'+p.lon.toFixed(6)+'°');
+      });
+    });
+    return lines.join('\r\n');
+  }
+
   // ---------- ZIP (store, sem compressão) — só o necessário pra montar .kmz/.zip no navegador ----------
   var CRC_TABLE = (function(){
     var t = [];
@@ -1108,6 +1159,11 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
   }
 
   function triggerDownload(bytesOrString, filename, mime){
+    // BOM no início do CSV/texto evita que o Excel embaralhe acentos (ç, ã, é...)
+    // ao abrir o arquivo — não afeta números nem o Google My Maps.
+    if (typeof bytesOrString === 'string' && /^text\//.test(mime)){
+      bytesOrString = '﻿' + bytesOrString;
+    }
     var blob = (bytesOrString instanceof Uint8Array)
       ? new Blob([bytesOrString], { type: mime })
       : new Blob([bytesOrString], { type: mime });
@@ -1166,6 +1222,21 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
       triggerDownload(zip, 'csv-por-cidade.zip', 'application/zip');
       setStatus(order.length + ' planilhas .csv (uma por cidade, sem a coluna Cidade) dentro do .zip.', 'ok');
     }, 20);
+  });
+
+  els.btnCsvGoogle.addEventListener('click', function(){
+    if (!lastResult) return;
+    var csv = buildGoogleCSV();
+    els.rawOut.value = csv;
+    triggerDownload(csv, todayStamp()+'-google-my-maps.csv', 'text/csv;charset=utf-8');
+    setStatus('CSV para o Google My Maps baixado — importe direto, sem abrir no Excel antes.', 'ok');
+  });
+
+  els.btnCopyRota.addEventListener('click', function(){
+    if (!lastResult) return;
+    var txt = buildRotaPaste();
+    els.rawOut.value = txt;
+    copyToClipboard(txt, 'Latitude/Longitude (Arquivo de Rota)');
   });
 
   function copyToClipboard(text, label){
