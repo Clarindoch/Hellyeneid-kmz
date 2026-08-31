@@ -334,8 +334,9 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
             <option>Pago Coelba</option>
           </select>
           <input type="number" id="bulkValor" class="mini-input" placeholder="Valor R$ (opcional)" step="0.01" min="0">
-          <button class="btn-accent btn-sm" id="btnBulkApply">Aplicar aos filtrados</button>
+          <button class="btn-accent btn-sm" id="btnBulkApply">Aplicar a todos os filtrados</button>
         </div>
+        <p class="hint" id="bulkHint">Isso aplica em <b><span id="bulkCount">0</span> poste(s)</b> — todos os que passam pelos filtros acima, mesmo que estejam espalhados em várias páginas. Não precisa passar página por página.</p>
         <div class="table-scroll" style="max-height:420px;">
           <table id="postTable">
             <thead><tr><th>Barramento</th><th>Cidade</th><th>Tipo</th><th style="text-align:right;">Valor (R$)</th></tr></thead>
@@ -364,7 +365,7 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
         <div class="row">
           <button class="btn-ghost" id="btnCsvGoogle">Baixar CSV p/ Google My Maps</button>
         </div>
-        <p class="hint">Separado por vírgula, com Latitude/Longitude em número puro (sem o símbolo de grau) — o formato que o Google My Maps reconhece sozinho ao importar. Importe esse arquivo direto no My Maps; não abra e salve de novo no Excel antes, porque o Excel em português pode trocar o ponto decimal da coordenada por vírgula e embaralhar tudo.</p>
+        <p class="hint">Separado por vírgula, com Latitude/Longitude em número puro (sem o símbolo de grau) — o formato que o Google My Maps reconhece sozinho ao importar. Importe esse arquivo <b>direto no My Maps</b>, sem abrir no Excel antes. Se abrir esse arquivo no Excel só pra conferir, é normal ele aparecer tudo espremido numa coluna só — o Excel em português espera ponto e vírgula, não vírgula, então não separa sozinho (isso não afeta o Google, só a visualização no Excel). Pra conferir no Excel, baixe o "CSV geral (com cidade)" acima, que já vem certinho em colunas.</p>
         <div class="row">
           <button class="btn-ghost" id="btnCopyRota">Copiar Latitude/Longitude p/ Arquivo de Rota</button>
         </div>
@@ -626,6 +627,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     bulkTipo: document.getElementById('bulkTipo'),
     bulkValor: document.getElementById('bulkValor'),
     btnBulkApply: document.getElementById('btnBulkApply'),
+    bulkCount: document.getElementById('bulkCount'),
     postTableBody: document.querySelector('#postTable tbody'),
     btnPrevPage: document.getElementById('btnPrevPage'),
     btnNextPage: document.getElementById('btnNextPage'),
@@ -829,6 +831,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     currentPage = 0;
     renderPostTable();
     updateCostStats();
+    if (els.bulkCount) els.bulkCount.textContent = filteredRows.length.toLocaleString('pt-BR');
   }
 
   function renderPostTable(){
