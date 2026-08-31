@@ -2,6 +2,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.3/umd/index.js"></script>
 <style>
   :root{
     --paper:#EEF2F1;
@@ -191,6 +192,39 @@
   .steps li{ font-size:12.5px; color:var(--muted); display:flex; gap:8px; }
   .steps li b{ color:var(--ink); }
 
+  .mini-input, .mini-select{
+    font:13px/1.3 var(--font-body); color:var(--ink); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:7px; padding:9px 10px;
+  }
+  .mini-input:focus, .mini-select:focus{ outline:2px solid var(--teal); outline-offset:1px; }
+  input.mini-input[type="number"]{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; width:130px; }
+  input.mini-input[type="text"]{ min-width:160px; }
+
+  .rule-row{ display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+  .rule-row .tag{
+    font:600 12px/1 var(--font-mono); background:var(--panel-2); border:1px solid var(--line);
+    border-radius:6px; padding:6px 8px;
+  }
+  .rule-row .arrow{ color:var(--muted); font-size:12px; }
+  .rule-remove{ background:transparent; border:none; color:var(--bad); cursor:pointer; font-size:16px; padding:2px 6px; line-height:1; }
+  .rules-empty{ font-size:12.5px; color:var(--muted); margin:0 0 10px; }
+
+  table#postTable{ width:100%; border-collapse:collapse; font-size:13px; }
+  table#postTable th{
+    text-align:left; font:600 11px/1 var(--font-body); text-transform:uppercase; letter-spacing:.06em;
+    color:var(--muted); border-bottom:1px solid var(--line); padding:8px; position:sticky; top:0; background:var(--panel);
+  }
+  table#postTable td{ padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  table#postTable tr.row-coelba{ background:var(--warn-bg); }
+  table#postTable select, table#postTable input{
+    font:12.5px var(--font-body); padding:5px 6px; border-radius:6px; border:1px solid var(--line); background:var(--panel);
+  }
+  table#postTable input[type="number"]{ width:100px; font-family:var(--font-mono); text-align:right; }
+  table#postTable input[type="number"]:disabled{ opacity:.4; }
+
+  .file-label{ display:inline-flex; }
+  .divider-row{ margin-top:16px; padding-top:14px; border-top:1px dashed var(--line); }
+
   footer.note{
     margin-top:28px; padding-top:14px; border-top:1px solid var(--line);
     font-size:12px; color:var(--muted);
@@ -206,7 +240,7 @@
     <div>
       <p class="brand-eyebrow">Ferramenta de campo &middot; Bahia</p>
       <h1>Postes por&nbsp;Cidade</h1>
-      <p class="top-sub">Cole os postes (Barramento, Latitude, Longitude) e o sistema identifica a cidade de cada um e monta o arquivo para o Google Earth.</p>
+      <p class="top-sub">Cole os postes (ou importe um KMZ), identifique a cidade de cada um, marque tipo e valor dos pagos à Coelba, e baixe o KMZ pronto para o Google Earth.</p>
     </div>
   </header>
 
@@ -231,6 +265,29 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
         </div>
         <div class="progress" id="progress"><div></div></div>
         <p class="status" id="status"></p>
+
+        <div class="row divider-row">
+          <label class="btn-ghost btn-sm file-label" for="kmzFile">Importar um KMZ/KML existente
+            <input type="file" id="kmzFile" accept=".kmz,.kml" style="display:none;">
+          </label>
+          <span class="hint" style="margin:0;">Lê os pontos do arquivo, joga na caixa acima e já identifica as cidades.</span>
+        </div>
+
+        <details class="raw">
+          <summary>Regras de classificação automática (opcional)</summary>
+          <p class="hint">Se o código do poste segue um padrão (ex: sempre começa com "PT" pra caixa de passagem), cadastre aqui. Quem não bater com nenhuma regra fica "Não classificado" pra você ajustar na tabela.</p>
+          <div id="rulesList"></div>
+          <div class="rule-row">
+            <input type="text" id="ruleTexto" class="mini-input" placeholder="texto no código (ex: PT)">
+            <span class="arrow">&rarr;</span>
+            <select id="ruleTipo" class="mini-select">
+              <option>Particular</option>
+              <option>Caixa de passagem</option>
+              <option>Pago Coelba</option>
+            </select>
+            <button class="btn-ghost btn-sm" id="btnAddRule">Adicionar regra</button>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -251,18 +308,59 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
         </div>
       </div>
 
+      <div class="panel" id="costPanel" style="display:none;">
+        <h2><span class="n">3</span> Tipo de poste &amp; custo Coelba</h2>
+        <div class="stat-row">
+          <div class="stat"><div class="num" id="statColeba">0</div><div class="lbl">Pagos Coelba</div></div>
+          <div class="stat good"><div class="num" id="statTotalValor">R$ 0,00</div><div class="lbl">Total mensal ITS &rarr; Coelba</div></div>
+        </div>
+        <div class="row">
+          <select id="filterCidade" class="mini-select"><option value="">Todas as cidades</option></select>
+          <select id="filterTipo" class="mini-select">
+            <option value="">Todos os tipos</option>
+            <option>Não classificado</option>
+            <option>Particular</option>
+            <option>Caixa de passagem</option>
+            <option>Pago Coelba</option>
+          </select>
+          <input type="text" id="filterBusca" class="mini-input" placeholder="Buscar Barramento...">
+        </div>
+        <div class="row">
+          <select id="bulkTipo" class="mini-select">
+            <option value="">Definir tipo dos filtrados...</option>
+            <option>Não classificado</option>
+            <option>Particular</option>
+            <option>Caixa de passagem</option>
+            <option>Pago Coelba</option>
+          </select>
+          <input type="number" id="bulkValor" class="mini-input" placeholder="Valor R$ (opcional)" step="0.01" min="0">
+          <button class="btn-accent btn-sm" id="btnBulkApply">Aplicar aos filtrados</button>
+        </div>
+        <div class="table-scroll" style="max-height:420px;">
+          <table id="postTable">
+            <thead><tr><th>Barramento</th><th>Cidade</th><th>Tipo</th><th style="text-align:right;">Valor (R$)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row" id="pagerRow">
+          <button class="btn-ghost btn-sm" id="btnPrevPage">&#9664; Anterior</button>
+          <span class="hint" id="pageInfo" style="margin:0;"></span>
+          <button class="btn-ghost btn-sm" id="btnNextPage">Próxima &#9654;</button>
+        </div>
+      </div>
+
       <div class="panel" id="exportPanel" style="display:none;">
-        <h2><span class="n">3</span> Baixar</h2>
+        <h2><span class="n">4</span> Baixar</h2>
         <div class="row">
           <button class="btn-accent" id="btnKml">Baixar KMZ (pastas por cidade)</button>
           <button class="btn-ghost" id="btnKmzZip">Baixar KMZ separados (.zip)</button>
         </div>
-        <p class="hint" id="kmlHint">O primeiro é um único <code>.kmz</code> com uma pasta por cidade (liga/desliga cada uma no Google Earth). O segundo é um <code>.zip</code> com um <code>.kmz</code> separado para cada cidade. Marcador: bolinha branca com contorno preto, bem pequena.</p>
+        <p class="hint" id="kmlHint">O primeiro é um único <code>.kmz</code> com uma pasta por cidade (liga/desliga cada uma no Google Earth). O segundo é um <code>.zip</code> com um <code>.kmz</code> separado para cada cidade. Marcador: bolinha branca e pequena; os postes marcados como "Pago Coelba" saem em dourado. Clicar no ponto no Google Earth mostra o tipo e o valor.</p>
         <div class="row">
           <button class="btn-ghost" id="btnCsv">Baixar CSV geral (com cidade)</button>
           <button class="btn-ghost" id="btnCsvZip">Baixar CSV separados por cidade (.zip)</button>
         </div>
-        <p class="hint">O CSV geral é uma tabela só, com a coluna Cidade em cada linha. O <code>.zip</code> separado traz uma planilha por cidade, sem a coluna Cidade (o nome do arquivo já diz qual é).</p>
+        <p class="hint">O CSV geral é uma tabela só, com a coluna Cidade em cada linha. O <code>.zip</code> separado traz uma planilha por cidade, sem a coluna Cidade (o nome do arquivo já diz qual é). Os dois já saem com as colunas Tipo e Valor que você marcou no passo 3.</p>
         <details class="raw">
           <summary>Ver / copiar o KML como texto</summary>
           <div class="row" style="margin-top:8px;">
@@ -276,7 +374,7 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
   </div>
 
   <div class="panel preview-wrap" id="previewPanel" style="display:none;">
-    <h2><span class="n">4</span> Conferência visual</h2>
+    <h2><span class="n">5</span> Conferência visual</h2>
     <canvas id="scatter" width="1000" height="640"></canvas>
     <p class="preview-caption">Cada ponto é um poste, colorido por cidade. Serve para conferir rapidamente que nenhum ponto caiu fora do lugar antes de exportar.</p>
   </div>
@@ -451,8 +549,28 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     return 'hsl(' + hue.toFixed(1) + ', 62%, 45%)';
   }
   var KML_COLORS = ['ffb26b1f','ff1f8f6f','ff2b5fc1','ffb23a3a','ff8b3fbd','ff3aa8a3','ff2e6bb2','ffbf5a2e','ff5c8f2b','ff9c3a7a'];
-  // pequeno marcador: bolinha branca com contorno preto (arquivo PNG embutido em cada KMZ)
+  // pequenos marcadores: bolinha branca (padrão) e dourada (poste pago Coelba), contorno escuro
   var DOT_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABuUlEQVR4nO2bW3LDMAhF3a7B3v8C7T2kX7QaChJ6WAjE/UqcxOYeA9GM0XGE9tbXzIud5/mRfvd5nimxvXqRGsMlvQXklZNyxu/7Fp/jui7y+GgQw05Gma4xXBIFZASMIQCw+ZHGsTCIXghdP55pHGsUiGYAqfmZxrFSEC0Qvlsuuop5fP2Wf51qACuZB/VAqEoZOPkqxilBSUjLQZwBFswfx1980kwQAbBiHlQDoQhg5HJWQ6X4swBWbHhSSRujqASsmQdJ4mYBWKt7TqV+QAKwXvecKF/ZErB+90E5H01LYU/6B8BL7WNxvSAyIH3j9e6DqCyIDNAOQFsBAF54r38Q7gORAdoBaCsAaAegrQCgHYC2AoB2ANoKANoBaOsXADxK4iYzvAg/OosM0A5AWwEgfeO9D1CPziMD8AGvWcANTkQG5D70kgU5HySAWYPKs0X5YjPASy8oDU2JeoBVCJK4swBSatYgSCdIixlgvR+U4heVgLV+UDMsKV4HWIFQOyland6rjs61To1XrwRXbIw9I/NNS+GVIPTuF4gdIyOC2XbPUKqtd41hbblvkNK2O0c5rbh3eHv9AH+192xWVVuNAAAAAElFTkSuQmCC";
+  var DOT_COELBA_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABw0lEQVR4nO2bwXXCMAyG0x47CUN0lA7DMIzSIZiEKz0J/FTZlmzHsmT9JwiQ6P8iCb8X+ThCe+tj5sW+L19P7nd/748psZ16EYnhms4CcspJc8Zv1wv7HD/XO3l8NIhhJ6NMSwzXRAEZAWMIAGx+pHEsDKIXQtePZxrHGgWiGUBqfqZxrBREC4TPlouuYh5fv+VfRwxgJfOgHgiilIGTr2KcEpQEtxzYGWDB/HG84+NmAguAFfMgCYQqgJHLWQ3V4i8CWLHhccVtjKwSsGYexIk7C8Ba3edU6wckAOt1nxPlq1gC1u8+qOSjaSnsSf8AeKl9rFwviAxI33i9+yAqCyIDtAPQVgCAF97rH4T7QGSAdgDaCgDaAWgrAGgHoK0AoB2AtgKAdgDaegGAR0m5yQwvwo/OIgO0A9BWAEjfeO8D1KPzyAB8wGsW5AYnIgNKH3rJgpIPEsCsQeXZonxlM8BLL6gNTbF6gFUInLiLAFJq1iBwJ0irGWC9H9TiZ5WAtX4gGZZkrwOsQJBOiorTe9XRudapcfFKcMXG2DMy37QUXglC736B2DEyIpht9wyl2nrXGNaW+wYpbbtzNKcV9w5vrz+zY/ds3kRweAAAAABJRU5ErkJggg==";
+
+  // ---------- tipo de poste / custo Coelba ----------
+  var TIPOS = ['Não classificado', 'Particular', 'Caixa de passagem', 'Pago Coelba'];
+  var classRules = [];
+  try {
+    var savedRules = localStorage.getItem('postes_class_rules_v1');
+    if (savedRules) classRules = JSON.parse(savedRules) || [];
+  } catch(e){ classRules = []; }
+  function saveRules(){
+    try { localStorage.setItem('postes_class_rules_v1', JSON.stringify(classRules)); } catch(e){}
+  }
+  function classifyTipoByRule(id){
+    var up = String(id).toUpperCase();
+    for (var i=0;i<classRules.length;i++){
+      var r = classRules[i];
+      if (r.texto && up.indexOf(String(r.texto).toUpperCase()) !== -1) return r.tipo;
+    }
+    return 'Não classificado';
+  }
 
   // ---------- app state ----------
   var lastResult = null; // { rows:[{id,lat,lon,city,method}], order:[cityNames sorted by count desc], groups: Map }
@@ -480,7 +598,25 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     btnCopyKml: document.getElementById('btnCopyKml'),
     btnCopyCsv: document.getElementById('btnCopyCsv'),
     rawOut: document.getElementById('rawOut'),
-    scatter: document.getElementById('scatter')
+    scatter: document.getElementById('scatter'),
+    kmzFile: document.getElementById('kmzFile'),
+    rulesList: document.getElementById('rulesList'),
+    ruleTexto: document.getElementById('ruleTexto'),
+    ruleTipo: document.getElementById('ruleTipo'),
+    btnAddRule: document.getElementById('btnAddRule'),
+    costPanel: document.getElementById('costPanel'),
+    statColeba: document.getElementById('statColeba'),
+    statTotalValor: document.getElementById('statTotalValor'),
+    filterCidade: document.getElementById('filterCidade'),
+    filterTipo: document.getElementById('filterTipo'),
+    filterBusca: document.getElementById('filterBusca'),
+    bulkTipo: document.getElementById('bulkTipo'),
+    bulkValor: document.getElementById('bulkValor'),
+    btnBulkApply: document.getElementById('btnBulkApply'),
+    postTableBody: document.querySelector('#postTable tbody'),
+    btnPrevPage: document.getElementById('btnPrevPage'),
+    btnNextPage: document.getElementById('btnNextPage'),
+    pageInfo: document.getElementById('pageInfo')
   };
 
   var SAMPLE = "Barramento\tLatitude\tLongitude\n" +
@@ -499,8 +635,10 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     els.input.value = '';
     els.status.textContent = '';
     els.resultsPanel.style.display='none';
+    els.costPanel.style.display='none';
     els.exportPanel.style.display='none';
     els.previewPanel.style.display='none';
+    lastResult = null;
   });
 
   function setStatus(msg, kind){
@@ -508,12 +646,59 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     els.status.className = 'status' + (kind ? (' '+kind) : '');
   }
 
+  // ---------- regras de classificação (UI) ----------
+  function renderRulesList(){
+    els.rulesList.innerHTML = '';
+    if (!classRules.length){
+      var p = document.createElement('p');
+      p.className = 'rules-empty';
+      p.textContent = 'Nenhuma regra cadastrada ainda.';
+      els.rulesList.appendChild(p);
+      return;
+    }
+    classRules.forEach(function(r, idx){
+      var row = document.createElement('div');
+      row.className = 'rule-row';
+      var tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = r.texto;
+      var arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.innerHTML = '&rarr;';
+      var tipoSpan = document.createElement('span');
+      tipoSpan.textContent = r.tipo;
+      var rm = document.createElement('button');
+      rm.className = 'rule-remove';
+      rm.type = 'button';
+      rm.title = 'Remover regra';
+      rm.textContent = '×';
+      rm.addEventListener('click', function(){
+        classRules.splice(idx, 1);
+        saveRules();
+        renderRulesList();
+      });
+      row.appendChild(tag); row.appendChild(arrow); row.appendChild(tipoSpan); row.appendChild(rm);
+      els.rulesList.appendChild(row);
+    });
+  }
+  renderRulesList();
+
+  els.btnAddRule.addEventListener('click', function(){
+    var texto = els.ruleTexto.value.trim();
+    if (!texto) return;
+    classRules.push({ texto: texto, tipo: els.ruleTipo.value });
+    saveRules();
+    els.ruleTexto.value = '';
+    renderRulesList();
+  });
+
   els.btnClassify.addEventListener('click', function(){
     var text = els.input.value;
     var rows = parseInput(text);
     if (!rows.length){
       setStatus('Não encontrei linhas com Latitude e Longitude válidas. Confira o formato e tente de novo.', 'err');
       els.resultsPanel.style.display='none';
+      els.costPanel.style.display='none';
       els.exportPanel.style.display='none';
       els.previewPanel.style.display='none';
       return;
@@ -545,6 +730,12 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
       els.progress.style.display='none';
       els.btnClassify.disabled = false;
       setStatus('Pronto: ' + rows.length.toLocaleString('pt-BR') + ' postes classificados em cidades.', 'ok');
+
+      rows.forEach(function(r){
+        r.tipo = classifyTipoByRule(r.id);
+        r.valor = 0;
+        r.tipoManual = false;
+      });
 
       var groups = new Map();
       rows.forEach(function(r){
@@ -583,12 +774,141 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
       });
 
       els.resultsPanel.style.display='block';
+      els.costPanel.style.display='block';
       els.exportPanel.style.display='block';
       els.previewPanel.style.display='block';
 
-      drawScatter(rows, colorIndex);
+      initCostPanel();
+      try { drawScatter(rows, colorIndex); } catch(e){ /* conferência visual é só um bônus */ }
     }
     step();
+  });
+
+  // ---------- painel 3: tipo de poste & custo Coelba ----------
+  var currentPage = 0;
+  var PAGE_SIZE = 100;
+  var filteredRows = [];
+
+  function initCostPanel(){
+    var order = lastResult.order.slice().sort();
+    els.filterCidade.innerHTML = '<option value="">Todas as cidades</option>';
+    order.forEach(function(city){
+      var opt = document.createElement('option');
+      opt.value = city; opt.textContent = city;
+      els.filterCidade.appendChild(opt);
+    });
+    els.filterTipo.value = '';
+    els.filterBusca.value = '';
+    currentPage = 0;
+    applyFilters();
+  }
+
+  function applyFilters(){
+    var cidade = els.filterCidade.value;
+    var tipo = els.filterTipo.value;
+    var busca = els.filterBusca.value.trim().toUpperCase();
+    filteredRows = lastResult.rows.filter(function(r){
+      if (cidade && r.city !== cidade) return false;
+      if (tipo && r.tipo !== tipo) return false;
+      if (busca && String(r.id).toUpperCase().indexOf(busca) === -1) return false;
+      return true;
+    });
+    currentPage = 0;
+    renderPostTable();
+    updateCostStats();
+  }
+
+  function renderPostTable(){
+    var totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+    if (currentPage >= totalPages) currentPage = totalPages - 1;
+    if (currentPage < 0) currentPage = 0;
+    var start = currentPage * PAGE_SIZE;
+    var pageRows = filteredRows.slice(start, start + PAGE_SIZE);
+
+    els.postTableBody.innerHTML = '';
+    pageRows.forEach(function(r){
+      var tr = document.createElement('tr');
+      if (r.tipo === 'Pago Coelba') tr.className = 'row-coelba';
+
+      var tdId = document.createElement('td');
+      tdId.textContent = r.id;
+      var tdCity = document.createElement('td');
+      tdCity.textContent = r.city;
+
+      var tdTipo = document.createElement('td');
+      var sel = document.createElement('select');
+      TIPOS.forEach(function(t){
+        var opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        if (t === r.tipo) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', function(){
+        r.tipo = sel.value;
+        r.tipoManual = true;
+        tr.className = (r.tipo === 'Pago Coelba') ? 'row-coelba' : '';
+        valorInput.disabled = (r.tipo !== 'Pago Coelba');
+        updateCostStats();
+      });
+      tdTipo.appendChild(sel);
+
+      var tdValor = document.createElement('td');
+      tdValor.style.textAlign = 'right';
+      var valorInput = document.createElement('input');
+      valorInput.type = 'number';
+      valorInput.step = '0.01';
+      valorInput.min = '0';
+      valorInput.value = r.valor ? r.valor : '';
+      valorInput.disabled = (r.tipo !== 'Pago Coelba');
+      valorInput.addEventListener('input', function(){
+        r.valor = parseFloat(valorInput.value) || 0;
+        updateCostStats();
+      });
+      tdValor.appendChild(valorInput);
+
+      tr.appendChild(tdId); tr.appendChild(tdCity); tr.appendChild(tdTipo); tr.appendChild(tdValor);
+      els.postTableBody.appendChild(tr);
+    });
+
+    var showingFrom = filteredRows.length ? (start+1) : 0;
+    var showingTo = Math.min(start+PAGE_SIZE, filteredRows.length);
+    els.pageInfo.textContent = 'Mostrando ' + showingFrom.toLocaleString('pt-BR') + '–' + showingTo.toLocaleString('pt-BR') +
+      ' de ' + filteredRows.length.toLocaleString('pt-BR') + ' (página ' + (currentPage+1) + ' de ' + totalPages + ')';
+    els.btnPrevPage.disabled = currentPage <= 0;
+    els.btnNextPage.disabled = currentPage >= totalPages-1;
+  }
+
+  function updateCostStats(){
+    if (!lastResult) return;
+    var count = 0, total = 0;
+    lastResult.rows.forEach(function(r){
+      if (r.tipo === 'Pago Coelba'){ count++; total += (r.valor || 0); }
+    });
+    els.statColeba.textContent = count.toLocaleString('pt-BR');
+    els.statTotalValor.textContent = 'R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  els.filterCidade.addEventListener('change', applyFilters);
+  els.filterTipo.addEventListener('change', applyFilters);
+  els.filterBusca.addEventListener('input', function(){
+    clearTimeout(els.filterBusca._t);
+    els.filterBusca._t = setTimeout(applyFilters, 200);
+  });
+  els.btnPrevPage.addEventListener('click', function(){ currentPage--; renderPostTable(); });
+  els.btnNextPage.addEventListener('click', function(){ currentPage++; renderPostTable(); });
+
+  els.btnBulkApply.addEventListener('click', function(){
+    var tipo = els.bulkTipo.value;
+    var valorRaw = els.bulkValor.value;
+    var valor = valorRaw !== '' ? (parseFloat(valorRaw) || 0) : null;
+    if (!tipo && valor === null) return;
+    filteredRows.forEach(function(r){
+      if (tipo){ r.tipo = tipo; r.tipoManual = true; }
+      if (valor !== null){ r.valor = valor; }
+    });
+    renderPostTable();
+    updateCostStats();
+    setStatus(filteredRows.length.toLocaleString('pt-BR') + ' postes atualizados.', 'ok');
   });
 
   function drawScatter(rows, colorIndex){
@@ -639,13 +959,22 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
   function buildPlacemarksXml(pts){
     var xml = '';
     pts.forEach(function(p){
-      xml += '<Placemark><name>'+escapeXml(p.id)+'</name><styleUrl>#poste</styleUrl>' +
+      var styleId = (p.tipo === 'Pago Coelba') ? 'posteCoelba' : 'poste';
+      var tipo = p.tipo || 'Não classificado';
+      var valorTxt = (p.tipo === 'Pago Coelba') ? ('R$ ' + (p.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})) : '—';
+      var desc = 'Tipo: ' + tipo + (p.tipo === 'Pago Coelba' ? ('&#10;Valor mensal: ' + valorTxt) : '');
+      xml += '<Placemark><name>'+escapeXml(p.id)+'</name><styleUrl>#'+styleId+'</styleUrl>' +
+        '<description><![CDATA['+desc+']]></description>' +
         '<Point><coordinates>'+p.lon.toFixed(9)+','+p.lat.toFixed(9)+',0</coordinates></Point></Placemark>\n';
     });
     return xml;
   }
-  var POSTE_STYLE = '<Style id="poste"><IconStyle><scale>0.35</scale>' +
+  var POSTE_STYLE =
+    '<Style id="poste"><IconStyle><scale>0.35</scale>' +
     '<Icon><href>files/dot.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle>' +
+    '<LabelStyle><scale>0</scale></LabelStyle></Style>\n' +
+    '<Style id="posteCoelba"><IconStyle><scale>0.4</scale>' +
+    '<Icon><href>files/dot-coelba.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle>' +
     '<LabelStyle><scale>0</scale></LabelStyle></Style>\n';
 
   function buildKML(){
@@ -671,13 +1000,16 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     return kml;
   }
 
+  function valorCsv(p){
+    return (p.tipo === 'Pago Coelba') ? (p.valor||0).toFixed(2).replace('.', ',') : '';
+  }
   function buildCSV(){
     if (!lastResult) return '';
     var order = lastResult.order.slice().sort();
-    var lines = ['Cidade;Barramento;Latitude;Longitude'];
+    var lines = ['Cidade;Barramento;Latitude;Longitude;Tipo;Valor'];
     order.forEach(function(city){
       lastResult.groups.get(city).forEach(function(p){
-        lines.push(city+';'+p.id+';'+p.lat.toFixed(9)+';'+p.lon.toFixed(9));
+        lines.push(city+';'+p.id+';'+p.lat.toFixed(9)+';'+p.lon.toFixed(9)+';'+(p.tipo||'Não classificado')+';'+valorCsv(p));
       });
     });
     return lines.join('\r\n');
@@ -685,9 +1017,9 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
 
   // CSV de uma única cidade, sem a coluna Cidade (o nome do arquivo já identifica)
   function buildCityCSV(pts){
-    var lines = ['Barramento;Latitude;Longitude'];
+    var lines = ['Barramento;Latitude;Longitude;Tipo;Valor'];
     pts.forEach(function(p){
-      lines.push(p.id+';'+p.lat.toFixed(9)+';'+p.lon.toFixed(9));
+      lines.push(p.id+';'+p.lat.toFixed(9)+';'+p.lon.toFixed(9)+';'+(p.tipo||'Não classificado')+';'+valorCsv(p));
     });
     return lines.join('\r\n');
   }
@@ -764,9 +1096,12 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
   }
 
   function buildOneCityKmz(city, pts){
-    var dotBytes = base64ToBytes(DOT_PNG_B64);
     var kml = buildCityKML(city, pts);
-    return buildZip([ { name:'doc.kml', data:kml }, { name:'files/dot.png', data:dotBytes } ]);
+    return buildZip([
+      { name:'doc.kml', data:kml },
+      { name:'files/dot.png', data:base64ToBytes(DOT_PNG_B64) },
+      { name:'files/dot-coelba.png', data:base64ToBytes(DOT_COELBA_PNG_B64) }
+    ]);
   }
 
   function triggerDownload(bytesOrString, filename, mime){
@@ -784,7 +1119,8 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     if (!lastResult) return;
     var kmz = buildZip([
       { name:'doc.kml', data: buildKML() },
-      { name:'files/dot.png', data: base64ToBytes(DOT_PNG_B64) }
+      { name:'files/dot.png', data: base64ToBytes(DOT_PNG_B64) },
+      { name:'files/dot-coelba.png', data: base64ToBytes(DOT_COELBA_PNG_B64) }
     ]);
     els.rawOut.value = buildKML();
     triggerDownload(kmz, todayStamp()+'.kmz', 'application/vnd.google-earth.kmz');
@@ -849,8 +1185,74 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     var csv = buildCSV(); els.rawOut.value = csv; copyToClipboard(csv, 'CSV');
   });
 
+  // ---------- importar KMZ/KML existente ----------
+  function extractFromKML(text){
+    var out = [];
+    var doc;
+    try { doc = new DOMParser().parseFromString(text, 'text/xml'); } catch(e){ return out; }
+    if (doc.getElementsByTagName('parsererror').length) return out;
+    var placemarks = doc.getElementsByTagName('Placemark');
+    for (var i=0; i<placemarks.length; i++){
+      var pm = placemarks[i];
+      var nameEl = pm.getElementsByTagName('name')[0];
+      var coordEl = pm.getElementsByTagName('coordinates')[0];
+      if (!coordEl || !coordEl.textContent) continue;
+      var normalized = coordEl.textContent.trim().replace(/\s*,\s*/g, ',');
+      var raw = normalized.split(/\s+/)[0];
+      var parts = raw.split(',');
+      if (parts.length < 2) continue;
+      var lon = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+      if (isNaN(lon) || isNaN(lat)) continue;
+      var id = (nameEl && nameEl.textContent.trim()) ? nameEl.textContent.trim() : ('PONTO-' + (out.length+1));
+      out.push({ id:id, lat:lat, lon:lon });
+    }
+    return out;
+  }
+
+  els.kmzFile.addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try {
+        var buf = new Uint8Array(reader.result);
+        var name = file.name.toLowerCase();
+        var kmlText;
+        if (name.indexOf('.kmz') !== -1){
+          if (!window.fflate){
+            setStatus('O leitor de KMZ não carregou (precisa de internet na primeira vez). Tente de novo em alguns segundos.', 'err');
+            return;
+          }
+          var unzipped = fflate.unzipSync(buf);
+          var kmlKey = Object.keys(unzipped).filter(function(k){ return k.toLowerCase().slice(-4) === '.kml'; })[0];
+          if (!kmlKey){ setStatus('Não encontrei um .kml dentro desse KMZ.', 'err'); return; }
+          kmlText = new TextDecoder('utf-8').decode(unzipped[kmlKey]);
+        } else {
+          kmlText = new TextDecoder('utf-8').decode(buf);
+        }
+        var extracted = extractFromKML(kmlText);
+        if (!extracted.length){
+          setStatus('Não encontrei nenhum ponto (Placemark) nesse arquivo.', 'err');
+          return;
+        }
+        var tsv = 'Barramento\tLatitude\tLongitude\n' + extracted.map(function(p){
+          return p.id + '\t' + p.lat.toFixed(9) + '\t' + p.lon.toFixed(9);
+        }).join('\n');
+        els.input.value = tsv;
+        setStatus(extracted.length.toLocaleString('pt-BR') + ' pontos importados de "' + file.name + '" — identificando cidades...', 'busy');
+        els.btnClassify.click();
+      } catch(err){
+        setStatus('Não consegui ler esse arquivo (' + (err && err.message ? err.message : 'formato inesperado') + ').', 'err');
+      } finally {
+        els.kmzFile.value = '';
+      }
+    };
+    reader.onerror = function(){ setStatus('Não consegui ler esse arquivo.', 'err'); };
+    reader.readAsArrayBuffer(file);
+  });
+
   window.addEventListener('resize', function(){
-    if (lastResult) drawScatter(lastResult.rows, lastResult.colorIndex);
+    if (lastResult){ try { drawScatter(lastResult.rows, lastResult.colorIndex); } catch(e){} }
   });
 })();
 </script>
