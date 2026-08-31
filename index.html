@@ -504,6 +504,9 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.6436,-13.18644],[-41.6
     for (var i=0;i<nums.length;i++){
       var n = nums[i];
       if (isNaN(n) || !isFinite(n)) continue;
+      // coordenadas no Brasil são sempre negativas (lat e lon) — isso evita confundir
+      // uma coluna de código/ID toda numérica (ex: "00001", "30001") com latitude/longitude
+      if (n >= 0) continue;
       var a = Math.abs(n);
       if (a <= 21) latCand.push(i);
       else if (a > 21 && a <= 85) lonCand.push(i);
