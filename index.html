@@ -1149,48 +1149,75 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     return out;
   }
 
-  function buildOneCityKmz(city, pts){
-    var kml = buildCityKML(city, pts);
+  function buildKmz(kmlText){
+    // Usa a biblioteca ZIP quando disponível; mantém um gerador interno como
+    // alternativa para funcionar mesmo sem acesso ao CDN/Cloud.
+    var files = {
+      'doc.kml': strBytes(kmlText),
+      'files/dot.png': base64ToBytes(DOT_PNG_B64),
+      'files/dot-coelba.png': base64ToBytes(DOT_COELBA_PNG_B64)
+    };
+    if (window.fflate && typeof window.fflate.zipSync === 'function') {
+      return window.fflate.zipSync(files, { level: 0 });
+    }
     return buildZip([
-      { name:'doc.kml', data:kml },
-      { name:'files/dot.png', data:base64ToBytes(DOT_PNG_B64) },
-      { name:'files/dot-coelba.png', data:base64ToBytes(DOT_COELBA_PNG_B64) }
+      { name:'doc.kml', data:files['doc.kml'] },
+      { name:'files/dot.png', data:files['files/dot.png'] },
+      { name:'files/dot-coelba.png', data:files['files/dot-coelba.png'] }
     ]);
   }
 
   function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
+    var fileName = baseName + '.' + preferredExt;
     try {
       var mime = preferredExt === 'kmz' ? 'application/vnd.google-earth.kmz' :
                  preferredExt === 'csv' ? 'text/csv;charset=utf-8' : 'application/octet-stream';
       var blob = data instanceof Blob ? data : new Blob([data], {type:mime});
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = baseName + '.' + preferredExt;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
-      setStatus(okMsg + ' Arquivo: ' + baseName + '.' + preferredExt, 'ok');
+      if (!blob || !blob.size) throw new Error('O arquivo foi gerado vazio.');
+      // Caminho nativo para navegadores que oferecem salvamento direto.
+      if (navigator.msSaveOrOpenBlob) {
+        navigator.msSaveOrOpenBlob(blob, fileName);
+      } else {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        a.setAttribute('target', '_self');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
+      }
+      setStatus(okMsg + ' Arquivo: ' + fileName + ' (' + Math.ceil(blob.size/1024) + ' KB).', 'ok');
+      return true;
     } catch (err) {
-      setStatus('Não foi possível iniciar o download neste navegador: ' + (err && err.message ? err.message : err), 'err');
+      setStatus('Falha ao gerar/baixar ' + fileName + ': ' + (err && err.message ? err.message : err) +
+        '. Tente abrir este index diretamente no Google Chrome e permitir downloads.', 'err');
+      return false;
     }
   }
 
   els.btnKml.addEventListener('click', function(){
-    if (!lastResult) return;
-    var kmz = buildZip([
-      { name:'doc.kml', data: buildKML() },
-      { name:'files/dot.png', data: base64ToBytes(DOT_PNG_B64) },
-      { name:'files/dot-coelba.png', data: base64ToBytes(DOT_COELBA_PNG_B64) }
-    ]);
-    els.rawOut.value = buildKML();
-    offerDownload(kmz, todayStamp(), 'kmz', 'kmz', 'KMZ gerado com sucesso — abra no Google Earth.');
+    if (!lastResult) {
+      setStatus('Primeiro cole ou importe os dados e clique em Processar para gerar o KMZ.', 'err');
+      return;
+    }
+    try {
+      var kmlText = buildKML();
+      if (!kmlText || !/<Placemark>/i.test(kmlText)) {
+        throw new Error('Não há postes processados para incluir no KMZ.');
+      }
+      var kmz = buildKmz(kmlText);
+      els.rawOut.value = kmlText;
+      offerDownload(kmz, todayStamp(), 'kmz', 'kmz', 'KMZ gerado com sucesso — abra no Google Earth.');
+    } catch (err) {
+      setStatus('Erro ao montar o KMZ: ' + (err && err.message ? err.message : err), 'err');
+    }
   });
 
   els.btnCsv.addEventListener('click', function(){
-    if (!lastResult) return;
+    if (!lastResult) { setStatus('Primeiro cole ou importe os dados e clique em Processar para gerar o CSV.', 'err'); return; }
     var csv = buildCSV();
     els.rawOut.value = csv;
     // BOM no arquivo salvo evita que o Excel embaralhe acentos ao abrir; não afeta números.
@@ -1198,7 +1225,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
   });
 
   els.btnCsvGoogle.addEventListener('click', function(){
-    if (!lastResult) return;
+    if (!lastResult) { setStatus('Primeiro cole ou importe os dados e clique em Processar para gerar o CSV.', 'err'); return; }
     var csv = buildGoogleCSV();
     els.rawOut.value = csv;
     offerDownload('﻿'+csv, todayStamp()+'-google-my-maps', 'csv', 'csv', 'CSV para o Google My Maps pronto — importe direto, sem abrir no Excel antes.');
