@@ -356,7 +356,7 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
         <div class="row">
           <button class="btn-accent" id="btnKml">Baixar KMZ (pastas por cidade)</button>
         </div>
-        <p class="hint" id="kmlHint">O arquivo sai como <code>.txt</code> (limite desta página hospedada). Depois de baixar, renomeie a extensão de <code>.txt</code> para <code>.kmz</code> e abra no Google Earth — cada cidade vira uma pasta, e os postes "Pago Coelba" já aparecem em dourado. <b>Quer baixar sem precisar renomear, ou um .kmz separado por cidade?</b> Use a versão standalone (o arquivo .html que rodo fora daqui).</p>
+        <p class="hint" id="kmlHint">O arquivo é gerado diretamente em <code>.kmz</code>, pronto para abrir no Google Earth. Cada cidade vira uma pasta, e os postes "Pago Coelba" aparecem em dourado.</p>
         <div class="row">
           <button class="btn-ghost" id="btnCsv">Baixar CSV geral (com cidade)</button>
         </div>
@@ -1158,29 +1158,23 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     ]);
   }
 
-  async function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
-    var dl = null;
-    try { dl = await window.claude.use('downloads'); } catch(e){ dl = null; }
-    if (!dl){
-      setStatus('Download automático não está disponível aqui — use "Ver / copiar" abaixo.', 'err');
-      return;
-    }
+  function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
     try {
-      await dl.save({ filename: baseName+'.'+preferredExt, data: data });
-      setStatus(okMsg + ' (.'+preferredExt+')', 'ok');
+      var mime = preferredExt === 'kmz' ? 'application/vnd.google-earth.kmz' :
+                 preferredExt === 'csv' ? 'text/csv;charset=utf-8' : 'application/octet-stream';
+      var blob = data instanceof Blob ? data : new Blob([data], {type:mime});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = baseName + '.' + preferredExt;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
+      setStatus(okMsg + ' Arquivo: ' + baseName + '.' + preferredExt, 'ok');
     } catch (err) {
-      if (err && err.code === 'extension_not_enabled'){
-        try {
-          await dl.save({ filename: baseName+'.'+fallbackExt, data: data });
-          setStatus(okMsg + ' — salvo como .'+fallbackExt+'. Renomeie para .'+preferredExt+' depois de baixar.', 'ok');
-        } catch(err2){
-          setStatus('Não foi possível baixar (' + (err2 && err2.code) + '). Use "Ver / copiar" abaixo.', 'err');
-        }
-      } else if (err && err.code === 'declined'){
-        setStatus('Download cancelado.', '');
-      } else {
-        setStatus('Não foi possível baixar (' + (err && err.code) + '). Use "Ver / copiar" abaixo.', 'err');
-      }
+      setStatus('Não foi possível iniciar o download neste navegador: ' + (err && err.message ? err.message : err), 'err');
     }
   }
 
@@ -1192,7 +1186,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
       { name:'files/dot-coelba.png', data: base64ToBytes(DOT_COELBA_PNG_B64) }
     ]);
     els.rawOut.value = buildKML();
-    offerDownload(kmz, todayStamp(), 'txt', 'txt', 'KMZ pronto — renomeie de .txt para .kmz e abra no Google Earth.');
+    offerDownload(kmz, todayStamp(), 'kmz', 'kmz', 'KMZ gerado com sucesso — abra no Google Earth.');
   });
 
   els.btnCsv.addEventListener('click', function(){
@@ -1200,14 +1194,14 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     var csv = buildCSV();
     els.rawOut.value = csv;
     // BOM no arquivo salvo evita que o Excel embaralhe acentos ao abrir; não afeta números.
-    offerDownload('﻿'+csv, todayStamp(), 'csv', 'txt', 'Tabela geral baixada.');
+    offerDownload('﻿'+csv, todayStamp(), 'csv', 'csv', 'Tabela geral baixada.');
   });
 
   els.btnCsvGoogle.addEventListener('click', function(){
     if (!lastResult) return;
     var csv = buildGoogleCSV();
     els.rawOut.value = csv;
-    offerDownload('﻿'+csv, todayStamp()+'-google-my-maps', 'csv', 'txt', 'CSV para o Google My Maps pronto — importe direto, sem abrir no Excel antes.');
+    offerDownload('﻿'+csv, todayStamp()+'-google-my-maps', 'csv', 'csv', 'CSV para o Google My Maps pronto — importe direto, sem abrir no Excel antes.');
   });
 
   els.btnCopyRota.addEventListener('click', function(){
