@@ -4,6 +4,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.3/umd/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root{
     --paper:#EEF2F1;
@@ -307,6 +309,21 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
             <tbody></tbody>
           </table>
         </div>
+        <h3 style="margin:16px 0 6px;font-size:14px;">Duplicados / sobrepostos</h3>
+        <div class="row">
+          <select id="dedupeMode">
+            <option value="coord">Sobrepostos (mesma posição, até ~1 m)</option>
+            <option value="id">Mesmo código (barramento)</option>
+            <option value="both">Os dois (posição ou código repetido)</option>
+          </select>
+          <button class="btn-ghost" id="btnDedupe">Remover duplicados</button>
+          <button class="btn-ghost btn-sm" id="btnDedupeUndo" style="display:none;">Desfazer</button>
+        </div>
+        <p class="hint" id="dedupeInfo">Remove os postes repetidos e deixa só um de cada. Você confere a lista do que saiu e pode desfazer.</p>
+        <details class="raw" id="dedupeDetails" style="display:none;">
+          <summary>Ver os removidos</summary>
+          <textarea class="raw-out" id="dedupeList" readonly></textarea>
+        </details>
       </div>
 
       <div class="panel" id="costPanel" style="display:none;">
@@ -353,10 +370,19 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
 
       <div class="panel" id="exportPanel" style="display:none;">
         <h2><span class="n">4</span> Baixar</h2>
+        <div id="kmzPick" style="border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;">
+          <div class="row" style="margin-bottom:6px;">
+            <b style="font-size:13px;">Quais cidades v&atilde;o no KMZ?</b>
+            <button class="btn-ghost btn-sm" id="btnSelAll" type="button">Marcar todas</button>
+            <button class="btn-ghost btn-sm" id="btnSelNone" type="button">Limpar</button>
+          </div>
+          <div id="citySel" style="max-height:190px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 12px;"></div>
+          <p class="hint" id="kmzSelInfo" style="margin:8px 0 0;"></p>
+        </div>
         <div class="row">
           <button class="btn-accent" id="btnKml">Baixar KMZ (pastas por cidade)</button>
         </div>
-        <p class="hint" id="kmlHint">O arquivo é gerado diretamente em <code>.kmz</code>, pronto para abrir no Google Earth. Cada cidade vira uma pasta, e os postes "Pago Coelba" aparecem em dourado.</p>
+        <p class="hint" id="kmlHint">O arquivo sai como <code>.txt</code> (limite desta página hospedada). Depois de baixar, renomeie a extensão de <code>.txt</code> para <code>.kmz</code> e abra no Google Earth — cada cidade vira uma pasta, e os postes "Pago Coelba" já aparecem em dourado. <b>Quer baixar sem precisar renomear, ou um .kmz separado por cidade?</b> Use a versão standalone (o arquivo .html que rodo fora daqui).</p>
         <div class="row">
           <button class="btn-ghost" id="btnCsv">Baixar CSV geral (com cidade)</button>
         </div>
@@ -369,6 +395,10 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
           <button class="btn-ghost" id="btnCopyRota">Copiar Latitude/Longitude p/ Arquivo de Rota</button>
         </div>
         <p class="hint">Copia duas colunas — Latitude e Longitude — no formato do seu Arquivo de Rota (ex.: <code>-12.935997°</code>), uma linha por poste, na ordem da tabela do passo 3. Cole direto nas colunas Latitude/Longitude da planilha de rota, a partir da primeira linha vazia.</p>
+        <div class="row">
+          <button class="btn-ghost" id="btnPdf">Gerar relat&oacute;rio em PDF</button>
+        </div>
+        <p class="hint">Relat&oacute;rio completo e explicado: resumo por cidade, tipos de poste e valores, regras de nomenclatura usadas e a lista detalhada de postes de cada cidade. Se o PDF n&atilde;o puder ser salvo aqui, ele sai como <code>.txt</code>: renomeie para <code>.pdf</code>.</p>
         <details class="raw">
           <summary>Ver / copiar o KML como texto</summary>
           <div class="row" style="margin-top:8px;">
@@ -704,6 +734,118 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     renderRulesList();
   });
 
+  function renderResults(rows, matched, nearest){
+      var groups = new Map();
+      rows.forEach(function(r){
+        if (!groups.has(r.city)) groups.set(r.city, []);
+        groups.get(r.city).push(r);
+      });
+      var order = Array.from(groups.keys()).sort(function(a,b){ return groups.get(b).length - groups.get(a).length; });
+      var colorOrderAlpha = Array.from(groups.keys()).sort();
+      var colorIndex = {};
+      colorOrderAlpha.forEach(function(c,idx){ colorIndex[c]=idx; });
+
+      lastResult = { rows:rows, order:order, groups:groups, colorIndex:colorIndex };
+
+      // stats
+      els.statTotal.textContent = rows.length.toLocaleString('pt-BR');
+      els.statCities.textContent = order.length.toLocaleString('pt-BR');
+      els.statMatched.textContent = matched.toLocaleString('pt-BR');
+      els.statNearest.textContent = nearest.toLocaleString('pt-BR');
+
+      // table
+      els.cityTableBody.innerHTML = '';
+      order.forEach(function(city){
+        var count = groups.get(city).length;
+        var tr = document.createElement('tr');
+        var tdCity = document.createElement('td');
+        var sw = document.createElement('span');
+        sw.className='swatch';
+        sw.style.background = cityColor(colorIndex[city]);
+        tdCity.appendChild(sw);
+        tdCity.appendChild(document.createTextNode(city));
+        var tdCount = document.createElement('td');
+        tdCount.className='num';
+        tdCount.textContent = count.toLocaleString('pt-BR');
+        tr.appendChild(tdCity); tr.appendChild(tdCount);
+        els.cityTableBody.appendChild(tr);
+      });
+
+      els.resultsPanel.style.display='block';
+      els.costPanel.style.display='block';
+      els.exportPanel.style.display='block';
+      els.previewPanel.style.display='block';
+
+      initCostPanel();
+      try { drawScatter(rows, colorIndex); } catch(e){ /* conferência visual é só um bônus */ }
+      renderCitySelect();
+  }
+
+  // ---------- remover duplicados / sobrepostos ----------
+  var dedupeBackup = null;
+  function resetDedupeUI(){
+    dedupeBackup = null;
+    document.getElementById('btnDedupeUndo').style.display = 'none';
+    document.getElementById('dedupeInfo').textContent = '';
+    document.getElementById('dedupeDetails').style.display = 'none';
+    document.getElementById('dedupeList').value = '';
+  }
+  function rowScore(r){ return ((r.tipo && r.tipo !== 'Não classificado') ? 2 : 0) + ((r.valor||0) > 0 ? 1 : 0); }
+  function dedupeRows(mode){
+    var rows = lastResult.rows;
+    var kept = [], removed = [];
+    var byCoord = new Map(), byId = new Map();
+    rows.forEach(function(r){
+      var kc = r.lat.toFixed(5) + ',' + r.lon.toFixed(5);
+      var ki = String(r.id).trim().toUpperCase();
+      var hit = -1, why = '';
+      if ((mode === 'coord' || mode === 'both') && byCoord.has(kc)){ hit = byCoord.get(kc); why = 'mesma posição'; }
+      if (hit < 0 && (mode === 'id' || mode === 'both') && byId.has(ki)){ hit = byId.get(ki); why = 'mesmo código'; }
+      if (hit < 0){
+        kept.push(r);
+        byCoord.set(kc, kept.length-1); byId.set(ki, kept.length-1);
+        return;
+      }
+      var other = kept[hit];
+      if (rowScore(r) > rowScore(other)){
+        kept[hit] = r; removed.push({ row: other, why: why, keep: r });
+      } else {
+        removed.push({ row: r, why: why, keep: other });
+      }
+    });
+    return { kept: kept, removed: removed };
+  }
+  document.getElementById('btnDedupe').addEventListener('click', function(){
+    if (!lastResult) return;
+    var mode = document.getElementById('dedupeMode').value;
+    var res = dedupeRows(mode);
+    var info = document.getElementById('dedupeInfo');
+    if (!res.removed.length){
+      info.textContent = 'Nenhum duplicado encontrado nesse critério. Nada foi alterado.';
+      return;
+    }
+    dedupeBackup = lastResult.rows;
+    var matched = res.kept.filter(function(r){ return r.method === 'polygon'; }).length;
+    renderResults(res.kept, matched, res.kept.length - matched);
+    var lines = res.removed.map(function(x){
+      return x.row.id + ';' + x.row.lat.toFixed(6) + ';' + x.row.lon.toFixed(6) + ';' + x.row.city + ' - ' + x.why + ' de ' + x.keep.id;
+    });
+    document.getElementById('dedupeList').value = 'Removido;Latitude;Longitude;Cidade - motivo\n' + lines.join('\n');
+    document.getElementById('dedupeDetails').style.display = 'block';
+    document.getElementById('btnDedupeUndo').style.display = '';
+    info.textContent = res.removed.length.toLocaleString('pt-BR') + ' duplicado(s) removido(s). Ficaram ' + res.kept.length.toLocaleString('pt-BR') + ' postes. Cada grupo manteve um poste (de preferência o que já tem tipo/valor).';
+    setStatus(res.removed.length.toLocaleString('pt-BR') + ' duplicados removidos.', 'ok');
+  });
+  document.getElementById('btnDedupeUndo').addEventListener('click', function(){
+    if (!dedupeBackup) return;
+    var rows = dedupeBackup;
+    var matched = rows.filter(function(r){ return r.method === 'polygon'; }).length;
+    renderResults(rows, matched, rows.length - matched);
+    resetDedupeUI();
+    document.getElementById('dedupeInfo').textContent = 'Remoção desfeita. Todos os postes voltaram.';
+    setStatus('Remoção de duplicados desfeita.', 'ok');
+  });
+
   els.btnClassify.addEventListener('click', function(){
     var text = els.input.value;
     var rows = parseInput(text);
@@ -749,49 +891,9 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
         r.tipoManual = false;
       });
 
-      var groups = new Map();
-      rows.forEach(function(r){
-        if (!groups.has(r.city)) groups.set(r.city, []);
-        groups.get(r.city).push(r);
-      });
-      var order = Array.from(groups.keys()).sort(function(a,b){ return groups.get(b).length - groups.get(a).length; });
-      var colorOrderAlpha = Array.from(groups.keys()).sort();
-      var colorIndex = {};
-      colorOrderAlpha.forEach(function(c,idx){ colorIndex[c]=idx; });
-
-      lastResult = { rows:rows, order:order, groups:groups, colorIndex:colorIndex };
-
-      // stats
-      els.statTotal.textContent = rows.length.toLocaleString('pt-BR');
-      els.statCities.textContent = order.length.toLocaleString('pt-BR');
-      els.statMatched.textContent = matched.toLocaleString('pt-BR');
-      els.statNearest.textContent = nearest.toLocaleString('pt-BR');
-
-      // table
-      els.cityTableBody.innerHTML = '';
-      order.forEach(function(city){
-        var count = groups.get(city).length;
-        var tr = document.createElement('tr');
-        var tdCity = document.createElement('td');
-        var sw = document.createElement('span');
-        sw.className='swatch';
-        sw.style.background = cityColor(colorIndex[city]);
-        tdCity.appendChild(sw);
-        tdCity.appendChild(document.createTextNode(city));
-        var tdCount = document.createElement('td');
-        tdCount.className='num';
-        tdCount.textContent = count.toLocaleString('pt-BR');
-        tr.appendChild(tdCity); tr.appendChild(tdCount);
-        els.cityTableBody.appendChild(tr);
-      });
-
-      els.resultsPanel.style.display='block';
-      els.costPanel.style.display='block';
-      els.exportPanel.style.display='block';
-      els.previewPanel.style.display='block';
-
-      initCostPanel();
-      try { drawScatter(rows, colorIndex); } catch(e){ /* conferência visual é só um bônus */ }
+      kmzOff.clear();
+      renderResults(rows, matched, nearest);
+      resetDedupeUI();
     }
     step();
   });
@@ -990,9 +1092,62 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     '<Icon><href>files/dot-coelba.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle>' +
     '<LabelStyle><scale>0</scale></LabelStyle></Style>\n';
 
+  // ---------- escolher quais cidades vão no KMZ ----------
+  var kmzOff = new Set();
+  function selectedCities(){
+    if (!lastResult) return [];
+    return lastResult.order.filter(function(c){ return !kmzOff.has(c); });
+  }
+  function slugCity(s){
+    return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  }
+  function kmzFileName(){
+    var sel = selectedCities();
+    if (sel.length === 1) return 'postes-' + slugCity(sel[0]);
+    if (sel.length === lastResult.order.length) return 'postes-por-cidade';
+    return 'postes-' + sel.length + '-cidades';
+  }
+  function updateKmzInfo(){
+    if (!lastResult) return;
+    var sel = selectedCities(), n = 0;
+    sel.forEach(function(c){ n += lastResult.groups.get(c).length; });
+    var info = document.getElementById('kmzSelInfo');
+    info.textContent = sel.length
+      ? (sel.length + ' de ' + lastResult.order.length + ' cidade(s) marcada(s), ' + n.toLocaleString('pt-BR') + ' poste(s) no KMZ.')
+      : 'Nenhuma cidade marcada. Marque ao menos uma para gerar o KMZ.';
+    els.btnKml.textContent = sel.length === lastResult.order.length
+      ? 'Baixar KMZ (todas as cidades)'
+      : 'Baixar KMZ (' + sel.length + ' cidade' + (sel.length === 1 ? '' : 's') + ')';
+    els.btnKml.disabled = !sel.length;
+  }
+  function renderCitySelect(){
+    var box = document.getElementById('citySel');
+    box.innerHTML = '';
+    lastResult.order.forEach(function(city){
+      var lab = document.createElement('label');
+      lab.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0;cursor:pointer;';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = !kmzOff.has(city);
+      cb.addEventListener('change', function(){
+        if (cb.checked) kmzOff.delete(city); else kmzOff.add(city);
+        updateKmzInfo();
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(city + ' (' + lastResult.groups.get(city).length.toLocaleString('pt-BR') + ')'));
+      box.appendChild(lab);
+    });
+    updateKmzInfo();
+  }
+  document.getElementById('btnSelAll').addEventListener('click', function(){
+    if (!lastResult) return; kmzOff.clear(); renderCitySelect();
+  });
+  document.getElementById('btnSelNone').addEventListener('click', function(){
+    if (!lastResult) return; lastResult.order.forEach(function(c){ kmzOff.add(c); }); renderCitySelect();
+  });
+
   function buildKML(){
     if (!lastResult) return '';
-    var order = lastResult.order.slice().sort();
+    var order = selectedCities().slice().sort();
     var kml = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Postes por Cidade - Bahia</name>\n';
     kml += POSTE_STYLE;
     order.forEach(function(city){
@@ -1149,86 +1304,66 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     return out;
   }
 
-  function buildKmz(kmlText){
-    // Usa a biblioteca ZIP quando disponível; mantém um gerador interno como
-    // alternativa para funcionar mesmo sem acesso ao CDN/Cloud.
-    var files = {
-      'doc.kml': strBytes(kmlText),
-      'files/dot.png': base64ToBytes(DOT_PNG_B64),
-      'files/dot-coelba.png': base64ToBytes(DOT_COELBA_PNG_B64)
-    };
-    if (window.fflate && typeof window.fflate.zipSync === 'function') {
-      return window.fflate.zipSync(files, { level: 0 });
-    }
+  function buildOneCityKmz(city, pts){
+    var kml = buildCityKML(city, pts);
     return buildZip([
-      { name:'doc.kml', data:files['doc.kml'] },
-      { name:'files/dot.png', data:files['files/dot.png'] },
-      { name:'files/dot-coelba.png', data:files['files/dot-coelba.png'] }
+      { name:'doc.kml', data:kml },
+      { name:'files/dot.png', data:base64ToBytes(DOT_PNG_B64) },
+      { name:'files/dot-coelba.png', data:base64ToBytes(DOT_COELBA_PNG_B64) }
     ]);
   }
 
-  function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
-    var fileName = baseName + '.' + preferredExt;
+  async function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
+    var dl = null;
+    try { dl = await window.claude.use('downloads'); } catch(e){ dl = null; }
+    if (!dl){
+      setStatus('Download automático não está disponível aqui — use "Ver / copiar" abaixo.', 'err');
+      return;
+    }
     try {
-      var mime = preferredExt === 'kmz' ? 'application/vnd.google-earth.kmz' :
-                 preferredExt === 'csv' ? 'text/csv;charset=utf-8' : 'application/octet-stream';
-      var blob = data instanceof Blob ? data : new Blob([data], {type:mime});
-      if (!blob || !blob.size) throw new Error('O arquivo foi gerado vazio.');
-      // Caminho nativo para navegadores que oferecem salvamento direto.
-      if (navigator.msSaveOrOpenBlob) {
-        navigator.msSaveOrOpenBlob(blob, fileName);
-      } else {
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.style.display = 'none';
-        a.setAttribute('target', '_self');
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
-      }
-      setStatus(okMsg + ' Arquivo: ' + fileName + ' (' + Math.ceil(blob.size/1024) + ' KB).', 'ok');
-      return true;
+      await dl.save({ filename: baseName+'.'+preferredExt, data: data });
+      setStatus(okMsg + ' (.'+preferredExt+')', 'ok');
     } catch (err) {
-      setStatus('Falha ao gerar/baixar ' + fileName + ': ' + (err && err.message ? err.message : err) +
-        '. Tente abrir este index diretamente no Google Chrome e permitir downloads.', 'err');
-      return false;
+      if (err && err.code === 'extension_not_enabled'){
+        try {
+          await dl.save({ filename: baseName+'.'+fallbackExt, data: data });
+          setStatus(okMsg + ' — salvo como .'+fallbackExt+'. Renomeie para .'+preferredExt+' depois de baixar.', 'ok');
+        } catch(err2){
+          setStatus('Não foi possível baixar (' + (err2 && err2.code) + '). Use "Ver / copiar" abaixo.', 'err');
+        }
+      } else if (err && err.code === 'declined'){
+        setStatus('Download cancelado.', '');
+      } else {
+        setStatus('Não foi possível baixar (' + (err && err.code) + '). Use "Ver / copiar" abaixo.', 'err');
+      }
     }
   }
 
   els.btnKml.addEventListener('click', function(){
-    if (!lastResult) {
-      setStatus('Primeiro cole ou importe os dados e clique em Processar para gerar o KMZ.', 'err');
-      return;
-    }
-    try {
-      var kmlText = buildKML();
-      if (!kmlText || !/<Placemark>/i.test(kmlText)) {
-        throw new Error('Não há postes processados para incluir no KMZ.');
-      }
-      var kmz = buildKmz(kmlText);
-      els.rawOut.value = kmlText;
-      offerDownload(kmz, todayStamp(), 'kmz', 'kmz', 'KMZ gerado com sucesso — abra no Google Earth.');
-    } catch (err) {
-      setStatus('Erro ao montar o KMZ: ' + (err && err.message ? err.message : err), 'err');
-    }
+    if (!lastResult) return;
+    if (!selectedCities().length){ setStatus('Marque ao menos uma cidade para gerar o KMZ.', 'err'); return; }
+    var kmz = buildZip([
+      { name:'doc.kml', data: buildKML() },
+      { name:'files/dot.png', data: base64ToBytes(DOT_PNG_B64) },
+      { name:'files/dot-coelba.png', data: base64ToBytes(DOT_COELBA_PNG_B64) }
+    ]);
+    els.rawOut.value = buildKML();
+    offerDownload(kmz, kmzFileName(), 'txt', 'txt', 'KMZ pronto (' + selectedCities().length + ' cidade(s)) — renomeie de .txt para .kmz e abra no Google Earth.');
   });
 
   els.btnCsv.addEventListener('click', function(){
-    if (!lastResult) { setStatus('Primeiro cole ou importe os dados e clique em Processar para gerar o CSV.', 'err'); return; }
+    if (!lastResult) return;
     var csv = buildCSV();
     els.rawOut.value = csv;
     // BOM no arquivo salvo evita que o Excel embaralhe acentos ao abrir; não afeta números.
-    offerDownload('﻿'+csv, todayStamp(), 'csv', 'csv', 'Tabela geral baixada.');
+    offerDownload('﻿'+csv, todayStamp(), 'csv', 'txt', 'Tabela geral baixada.');
   });
 
   els.btnCsvGoogle.addEventListener('click', function(){
-    if (!lastResult) { setStatus('Primeiro cole ou importe os dados e clique em Processar para gerar o CSV.', 'err'); return; }
+    if (!lastResult) return;
     var csv = buildGoogleCSV();
     els.rawOut.value = csv;
-    offerDownload('﻿'+csv, todayStamp()+'-google-my-maps', 'csv', 'csv', 'CSV para o Google My Maps pronto — importe direto, sem abrir no Excel antes.');
+    offerDownload('﻿'+csv, todayStamp()+'-google-my-maps', 'csv', 'txt', 'CSV para o Google My Maps pronto — importe direto, sem abrir no Excel antes.');
   });
 
   els.btnCopyRota.addEventListener('click', function(){
@@ -1236,6 +1371,143 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     var txt = buildRotaPaste();
     els.rawOut.value = txt;
     copyToClipboard(txt, 'Latitude/Longitude (Arquivo de Rota)');
+  });
+
+  // ---------- relatório em PDF ----------
+  function fmtBRL(v){ return 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function buildReportPDF(){
+    var J = window.jspdf && window.jspdf.jsPDF;
+    if (!J) return null;
+    var doc = new J({ unit:'mm', format:'a4' });
+    if (typeof doc.autoTable !== 'function') return null;
+    var W = doc.internal.pageSize.getWidth();
+    var rows = lastResult.rows, order = lastResult.order, groups = lastResult.groups;
+    var NAVY = [27,54,93], MUSGO = [74,93,35], CINZA = [90,90,90];
+    var tipos = TIPOS.slice();
+    var matched = rows.filter(function(r){ return r.method === 'polygon'; }).length;
+    var nearest = rows.length - matched;
+    var totalValor = 0, totalCoelba = 0;
+    rows.forEach(function(r){ if (r.tipo === 'Pago Coelba'){ totalCoelba++; totalValor += (r.valor||0); } });
+
+    // cabeçalho
+    doc.setFillColor(NAVY[0],NAVY[1],NAVY[2]); doc.rect(0,0,W,28,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(18);
+    doc.text('Relatório de Postes por Cidade', 14, 14);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('Gerado em ' + new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), 14, 21);
+    doc.setTextColor(30,30,30);
+
+    var y = 38;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(NAVY[0],NAVY[1],NAVY[2]);
+    doc.text('1. Resumo geral', 14, y); y += 6;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+    var resumo = [
+      'Total de postes analisados: ' + rows.length.toLocaleString('pt-BR'),
+      'Cidades encontradas: ' + order.length.toLocaleString('pt-BR'),
+      'Dentro do limite oficial da cidade: ' + matched.toLocaleString('pt-BR'),
+      'Ajustados para a cidade mais próxima (fora de qualquer limite, ex.: litoral): ' + nearest.toLocaleString('pt-BR'),
+      'Postes "Pago Coelba": ' + totalCoelba.toLocaleString('pt-BR') + '  |  Total mensal ITS → Coelba: ' + fmtBRL(totalValor)
+    ];
+    resumo.forEach(function(l){ doc.text(l.replace('→','para'), 16, y); y += 5.5; });
+    y += 2;
+    doc.setFontSize(9); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]);
+    var expl = doc.splitTextToSize('Como a cidade é definida: cada poste (latitude/longitude) é testado contra os limites municipais oficiais do IBGE 2020 (arquivo KMZ LIMITES MUNICIPAIS BAHIA). Se o ponto cai dentro do limite, a cidade é exata. Se cai fora de todos os limites (por exemplo, na faixa de mar ou imprecisão do GPS), ele é associado ao município mais próximo e contado como "ajustado".', W-30);
+    doc.text(expl, 14, y); y += expl.length*4.2 + 4;
+
+    // tabela por cidade
+    var head1 = ['Cidade','Postes','%'].concat(tipos).concat(['Valor mensal Coelba']);
+    var body1 = order.map(function(city){
+      var g = groups.get(city), cnt = {}, val = 0;
+      tipos.forEach(function(tp){ cnt[tp]=0; });
+      g.forEach(function(r){ var tp = r.tipo || 'Não classificado'; cnt[tp] = (cnt[tp]||0)+1; if (tp === 'Pago Coelba') val += (r.valor||0); });
+      return [city, g.length.toLocaleString('pt-BR'), (100*g.length/rows.length).toFixed(1).replace('.',',')+'%']
+        .concat(tipos.map(function(tp){ return String(cnt[tp]||0); })).concat([fmtBRL(val)]);
+    });
+    var tot = {}; tipos.forEach(function(tp){ tot[tp]=0; });
+    rows.forEach(function(r){ var tp = r.tipo || 'Não classificado'; tot[tp] = (tot[tp]||0)+1; });
+    body1.push(['TOTAL', rows.length.toLocaleString('pt-BR'), '100%'].concat(tipos.map(function(tp){ return String(tot[tp]||0); })).concat([fmtBRL(totalValor)]));
+    doc.autoTable({
+      startY: y, head:[head1], body: body1, theme:'grid',
+      styles:{ fontSize:8, cellPadding:1.8 },
+      headStyles:{ fillColor: NAVY, textColor:255 },
+      columnStyles:{ 1:{halign:'right'}, 2:{halign:'right'}, 3:{halign:'right'}, 4:{halign:'right'}, 5:{halign:'right'}, 6:{halign:'right'}, 7:{halign:'right'} },
+      didParseCell: function(d){ if (d.row.index === body1.length-1 && d.section === 'body'){ d.cell.styles.fontStyle='bold'; d.cell.styles.fillColor=[225,232,215]; } }
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    // tipos de poste + nomenclatura
+    if (y > 235){ doc.addPage(); y = 20; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(NAVY[0],NAVY[1],NAVY[2]);
+    doc.text('2. Tipos de poste e nomenclatura', 14, y); y += 4;
+    var desc = {
+      'Não classificado':'Nenhuma regra de nomenclatura se aplicou e o tipo não foi marcado à mão.',
+      'Particular':'Poste marcado como particular.',
+      'Caixa de passagem':'Caixa de passagem marcada na lista.',
+      'Pago Coelba':'Poste pelo qual se paga o valor mensal à Coelba (entra no total mensal).'
+    };
+    var body2 = tipos.map(function(tp){
+      var v = 0; rows.forEach(function(r){ if ((r.tipo||'Não classificado') === tp) v += (r.valor||0); });
+      return [tp, desc[tp]||'', String(tot[tp]||0), tp === 'Pago Coelba' ? fmtBRL(v) : '-'];
+    });
+    doc.autoTable({
+      startY: y, head:[['Tipo','Significado','Postes','Valor mensal']], body: body2, theme:'grid',
+      styles:{ fontSize:8.5, cellPadding:1.8 }, headStyles:{ fillColor: MUSGO, textColor:255 },
+      columnStyles:{ 2:{halign:'right'}, 3:{halign:'right'} }
+    });
+    y = doc.lastAutoTable.finalY + 6;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+    doc.text('Regras de nomenclatura em uso', 14, y); y += 2;
+    var body3 = classRules.length ? classRules.map(function(r){ return ['Se o código do poste contém "' + r.texto + '"', r.tipo]; })
+                                  : [['Nenhuma regra cadastrada. Os tipos foram marcados manualmente.','-']];
+    doc.autoTable({
+      startY: y, head:[['Regra','Tipo aplicado']], body: body3, theme:'grid',
+      styles:{ fontSize:8.5, cellPadding:1.8 }, headStyles:{ fillColor: MUSGO, textColor:255 }
+    });
+
+    // detalhe por cidade
+    doc.addPage();
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(NAVY[0],NAVY[1],NAVY[2]);
+    doc.text('3. Postes por cidade (detalhe)', 14, 18);
+    var yy = 22;
+    order.forEach(function(city){
+      var g = groups.get(city);
+      var body = g.map(function(r){
+        return [String(r.id), r.lat.toFixed(6), r.lon.toFixed(6), r.tipo || 'Não classificado', r.tipo === 'Pago Coelba' ? fmtBRL(r.valor) : '-'];
+      });
+      doc.autoTable({
+        startY: yy,
+        head:[
+          [{ content: city + '  -  ' + g.length.toLocaleString('pt-BR') + ' poste(s)', colSpan:5, styles:{ fillColor: NAVY, textColor:255, fontSize:9.5 } }],
+          ['Barramento','Latitude','Longitude','Tipo','Valor mensal']
+        ],
+        body: body, theme:'striped', showHead:'everyPage',
+        styles:{ fontSize:7.5, cellPadding:1.3 },
+        headStyles:{ fillColor:[225,232,215], textColor:[30,30,30] },
+        columnStyles:{ 4:{halign:'right'} },
+        margin:{ top:16 }
+      });
+      yy = doc.lastAutoTable.finalY + 8;
+      if (yy > 265){ doc.addPage(); yy = 18; }
+    });
+
+    // rodapé com paginação
+    var n = doc.internal.getNumberOfPages();
+    for (var i=1;i<=n;i++){
+      doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(130,130,130);
+      doc.text('Postes por Cidade  |  Página ' + i + ' de ' + n, W/2, 290, { align:'center' });
+    }
+    return doc.output('arraybuffer');
+  }
+
+  document.getElementById('btnPdf').addEventListener('click', function(){
+    if (!lastResult) return;
+    setStatus('Gerando relatório em PDF…', '');
+    setTimeout(function(){
+      var buf = null;
+      try { buf = buildReportPDF(); } catch(e){ buf = null; }
+      if (!buf){ setStatus('Não consegui montar o PDF (biblioteca não carregou). Recarregue a página e tente de novo.', 'err'); return; }
+      offerDownload(buf, 'relatorio-postes-por-cidade', 'pdf', 'txt', 'Relatório pronto.');
+    }, 30);
   });
 
   function copyToClipboard(text, label){
