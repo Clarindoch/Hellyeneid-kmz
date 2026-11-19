@@ -1313,40 +1313,22 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     ]);
   }
 
-  function dlErrorMsg(code, bytes){
-    var mb = (bytes/1048576).toFixed(1).replace('.',',');
-    if (code === 'too_large') return 'Arquivo grande demais (' + mb + ' MB; o limite é 16 MB). Marque menos cidades no KMZ e tente de novo.';
-    if (code === 'rate_limited') return 'Já existe uma confirmação de download aberta. Responda a ela (ou espere um instante) e clique de novo.';
-    if (code === 'rejected_extension' || code === 'bad_request' || code === 'transform_error') return 'O arquivo foi recusado (' + code + '). Use "Ver / copiar" abaixo.';
-    return 'O download foi bloqueado neste modo de visualização (' + code + '). Use "Ver / copiar" abaixo.';
+  function directDownload(data, filename, ext){
+    var mimes = { kmz:'application/vnd.google-earth.kmz', pdf:'application/pdf', csv:'text/csv;charset=utf-8', txt:'text/plain;charset=utf-8', kml:'application/vnd.google-earth.kml+xml' };
+    var blob = new Blob([data], { type: mimes[ext] || 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch(e){} }, 2000);
   }
-  async function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
-    var bytes = (data && data.byteLength !== undefined) ? data.byteLength : String(data).length;
-    setStatus('Preparando o download… (se aparecer uma confirmação, aceite para salvar)', '');
-    var dl = null;
-    try { dl = await window.claude.use('downloads'); } catch(e){ dl = null; }
-    if (!dl){
-      setStatus('Este modo de abrir o programa não permite salvar arquivos. Abra o link do artifact direto no navegador ou no app do Claude, ou use "Ver / copiar" abaixo.', 'err');
-      return;
-    }
+  function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg, realExt){
+    var ext = realExt || preferredExt;
     try {
-      await dl.save({ filename: baseName+'.'+preferredExt, data: data });
-      setStatus(okMsg + ' (.'+preferredExt+')', 'ok');
-    } catch (err) {
-      var code = err && err.code;
-      if (code === 'extension_not_enabled'){
-        try {
-          await dl.save({ filename: baseName+'.'+fallbackExt, data: data });
-          setStatus(okMsg + ' — salvo como .'+fallbackExt+'. Renomeie para .'+preferredExt+' depois de baixar.', 'ok');
-        } catch(err2){
-          if (err2 && err2.code === 'declined') setStatus('Download cancelado.', '');
-          else setStatus(dlErrorMsg(err2 && err2.code, bytes), 'err');
-        }
-      } else if (code === 'declined'){
-        setStatus('Download cancelado.', '');
-      } else {
-        setStatus(dlErrorMsg(code, bytes), 'err');
-      }
+      directDownload(data, baseName + '.' + ext, ext);
+      setStatus(okMsg + ' Arquivo: ' + baseName + '.' + ext + '. Se o navegador não baixou nada, use "Ver / copiar" abaixo.', 'ok');
+    } catch(e){
+      setStatus('O navegador bloqueou o download. Use "Ver / copiar" abaixo.', 'err');
     }
   }
 
@@ -1374,7 +1356,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     var kml = buildKML();
     var kmz = makeKmz(kml);
     els.rawOut.value = kml;
-    offerDownload(kmz, kmzFileName(), 'txt', 'txt', 'KMZ pronto (' + selectedCities().length + ' cidade(s)) — renomeie de .txt para .kmz e abra no Google Earth.');
+    offerDownload(kmz, kmzFileName(), 'txt', 'txt', 'KMZ pronto (' + selectedCities().length + ' cidade(s)); abra no Google Earth.', 'kmz');
   });
 
   els.btnCsv.addEventListener('click', function(){
