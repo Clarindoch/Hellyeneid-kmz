@@ -417,6 +417,43 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
     <p class="preview-caption">Cada ponto é um poste, colorido por cidade. Serve para conferir rapidamente que nenhum ponto caiu fora do lugar antes de exportar.</p>
   </div>
 
+  <div class="panel" id="neoPanel">
+    <h2><span class="n">6</span> Importar do NeoCompartilha (disponibilidade dos postes)</h2>
+    <p class="hint" style="margin-top:0;">Aqui você transforma os postes do NeoCompartilha (verde = Dispon&iacute;vel, amarelo = Poss&iacute;vel Disponibilidade, vermelho = Indispon&iacute;vel) em KMZ. O programa n&atilde;o consegue entrar sozinho no site, ent&atilde;o voc&ecirc; copia os dados dele e cola aqui:</p>
+    <ol class="hint" style="margin:0 0 12px 18px;padding:0;line-height:1.55;">
+      <li>Abra o NeoCompartilha no computador, aperte <b>F12</b> e clique na aba <b>Rede</b> (Network). Filtre por <b>Fetch/XHR</b>.</li>
+      <li>D&ecirc; zoom no mapa at&eacute; aparecerem os postes da &aacute;rea que voc&ecirc; quer. V&atilde;o surgir pedidos na lista.</li>
+      <li>Clique no pedido que traz os postes (em geral o maior, que devolve um texto em JSON). Na aba <b>Resposta</b> (Response), selecione tudo (Ctrl+A), copie (Ctrl+C) e cole abaixo.</li>
+    </ol>
+    <textarea id="neoInput" placeholder="Cole aqui o JSON/GeoJSON/CSV copiado do NeoCompartilha, ou carregue um arquivo salvo." style="width:100%;min-height:120px;"></textarea>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn-accent" id="neoRead" type="button">Ler dados</button>
+      <label class="btn-ghost" style="cursor:pointer;display:inline-block;">Carregar arquivo<input type="file" id="neoFile" accept=".json,.geojson,.csv,.txt" style="display:none;"></label>
+      <button class="btn-ghost" id="neoClear" type="button">Limpar</button>
+    </div>
+    <p class="hint" id="neoMsg" style="margin:10px 0 0;"></p>
+    <div id="neoResult" style="display:none;">
+      <div class="row" style="margin-top:10px;align-items:center;">
+        <label style="font-size:13px;">Campo do status:&nbsp;<select id="neoStatusField"></select></label>
+      </div>
+      <div id="neoMapBox" class="table-scroll" style="margin:8px 0;"></div>
+      <div style="border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin:10px 0;">
+        <b style="font-size:13px;">Quais v&atilde;o no KMZ?</b>
+        <div id="neoChecks" style="display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:6px;"></div>
+        <div class="row" style="margin-top:8px;align-items:center;">
+          <label style="font-size:13px;">Pastas por:&nbsp;
+            <select id="neoGroup"><option value="status">Status</option><option value="city">Cidade e status</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn-accent" id="neoKmz" type="button">Baixar KMZ</button>
+        <button class="btn-ghost" id="neoCsv" type="button">Baixar CSV</button>
+        <button class="btn-ghost" id="neoToApp" type="button">Mandar para o programa (identificar cidades)</button>
+      </div>
+    </div>
+  </div>
+
   <footer class="note">
     Classificação por município feita com a malha oficial do IBGE para a Bahia (417 municípios). Pontos fora de qualquer polígono (ex.: bem na linha da costa) são atribuídos à cidade mais próxima e aparecem marcados como "ajustados". Nada do que você cola aqui sai deste navegador — a classificação e a geração dos arquivos rodam localmente, sem servidor e sem conta.
   </footer>
@@ -1516,6 +1553,359 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
       if (!buf){ setStatus('Não consegui montar o PDF (biblioteca não carregou). Recarregue a página e tente de novo.', 'err'); return; }
       offerDownload(buf, 'relatorio-postes-por-cidade', 'pdf', 'txt', 'Relatório pronto.');
     }, 30);
+  });
+
+  // ---------- NeoCompartilha: importar e gerar KMZ por disponibilidade ----------
+  var NEO_ICONS = {"verde": "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAp0lEQVR42r2WzQnAIAxGc3QU707hFG7hPJ3DLZzIxuJBJRb/EuGDQst7xSaxABNLa60wBmNL8rWC04UQhwmYNEi+53bA+S3jD7hPftbOwj0FgQeaDER+Cd5DR5mSlG1Zhg8klhLEXTghiVS1HMEJiasFgUEQ6iZKDIL0NWPpyitwQmKa6mEQWBEB+xbxfmT2MhVpNPZRITLs2Me1yIEjcmSKHPo3f1teSq2FD2Ju7iMAAAAASUVORK5CYII=", "amarelo": "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAp0lEQVR42r2WzQnAIAxGPTqKd6dwCrdwOLdwia5hY/GgkhT/EuGDQst7xSaxSk0sY4yGWIirKddanS6AeEiEZCLlnt8Bl7dMP+Ax5Vk3Cw8YJD+qCyEKS/ARSmVKUrdlGU5IHCZIu3BEkrBqOYIjEt8KIoMgtk2UGQT5a8balVfgiMR21cMgcCIC9i3i/cjsZSrSaOyjQmTYsY9rkQNH5MgUOfRv/ra8wTi/9nG9fSEAAAAASUVORK5CYII=", "vermelho": "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAp0lEQVR42r2WzQnAIAxGc3QU707hFG7hcG7hEl3DxuJBJRb/EuGDQst7xSaxABNLa60wBmNL8rWC04UQhwmYNEi+53bA+S3jD7hPftbOwj0FeQCaDER+Cd5DR5mSlG1Zhg8klhLEXTghiVS1HMEJiasFgUEQ6iZKDIL0NWPpyitwQmKa6mEQWBEB+xbxfmT2MhVpNPZRITLs2Me1yIEjcmSKHPo3f1tes0DI37uVcFUAAAAASUVORK5CYII=", "cinza": "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAqElEQVR42r2WzQnAIAxGPTqKd6dwCrfoFE7kFk5kY/GgkhT/EuGDQst7xSaxSk0sY4yGWIirKddanS6AeEiEZCLlnt8Bl7dMP+Ax5Vk3C38wSAihCyF6luAjlMqUpG7LMpyQOEyQduGIJGHVcgRHJL4VRAZBbJsoMwjy14y1K6/AEYntqodB4EQE7FvE+5HZy1Sk0dhHhciwYx/XIgeOyJEpcujf/G15AUpDgP4Ac+EuAAAAAElFTkSuQmCC"};
+  var NEO_STATUS = ['Disponível','Possível Disponibilidade','Indisponível','Sem status'];
+  var NEO_ICON_OF = {'Disponível':'verde','Possível Disponibilidade':'amarelo','Indisponível':'vermelho','Sem status':'cinza'};
+  var neo = { recs:[], keys:[], field:'', map:{}, on:{} };
+
+  function neoNorm(v){ return String(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+  function neoStatusOf(v){
+    var s = neoNorm(v);
+    if (!s) return null;
+    if (/indispon|nao dispon|vermelh|\bred\b/.test(s)) return 'Indisponível';
+    if (/possivel|amarel|yellow/.test(s)) return 'Possível Disponibilidade';
+    if (/dispon|livre|verde|green/.test(s)) return 'Disponível';
+    return null;
+  }
+  function neoNum(v){
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string'){ var s = v.trim().replace(',', '.'); if (/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s); }
+    return NaN;
+  }
+  function neoMerc(x, y){
+    var lon = x / 20037508.34 * 180, lat = y / 20037508.34 * 180;
+    lat = 180 / Math.PI * (2 * Math.atan(Math.exp(lat * Math.PI / 180)) - Math.PI / 2);
+    return [lon, lat];
+  }
+  function neoPoint(x, y){
+    x = neoNum(x); y = neoNum(y);
+    if (isNaN(x) || isNaN(y)) return null;
+    if (Math.abs(x) > 180 || Math.abs(y) > 90){ var c = neoMerc(x, y); x = c[0]; y = c[1]; }
+    if (Math.abs(x) > 180 || Math.abs(y) > 90) return null;
+    if (x > -20 && x < 5 && y < -30 && y > -75){ var tmp = x; x = y; y = tmp; } // lat/lon trocados
+    return { lon:x, lat:y };
+  }
+  function neoGeom(g){
+    if (g == null) return null;
+    if (Array.isArray(g)) return g.length >= 2 && typeof g[0] !== 'object' ? neoPoint(g[0], g[1]) : null;
+    if (typeof g === 'string'){ var m = g.match(/(-?\d+[.,]?\d*)\s*[,; ]\s*(-?\d+[.,]?\d*)/); return m ? neoPointLatLonStr(m[1], m[2]) : null; }
+    if (typeof g === 'object'){
+      if (g.coordinates){ var c = g.coordinates; while (Array.isArray(c) && Array.isArray(c[0])) c = c[0]; return neoGeom(c); }
+      if (g.x != null && g.y != null) return neoPoint(g.x, g.y);
+      var la = g.lat != null ? g.lat : g.latitude, lo = g.lng != null ? g.lng : (g.lon != null ? g.lon : g.longitude);
+      if (la != null && lo != null) return neoPoint(lo, la);
+    }
+    return null;
+  }
+  function neoPointLatLonStr(a, b){ // texto "lat, lon" (padrão de planilhas no Brasil)
+    return neoPoint(String(b).replace(',', '.'), String(a).replace(',', '.'));
+  }
+  function neoFindPoint(o){
+    var keys = Object.keys(o), lat = null, lon = null, k, i;
+    for (i = 0; i < keys.length; i++){
+      k = keys[i].toLowerCase();
+      if (/^(lat|latitude|coord_?y|y)$/.test(k) && lat == null) lat = o[keys[i]];
+      else if (/^(lon|lng|long|longitude|coord_?x|x)$/.test(k) && lon == null) lon = o[keys[i]];
+    }
+    if (lat != null && lon != null){ var p = neoPoint(lon, lat); if (p) return p; }
+    var names = ['geometry','geom','location','position','point','coordinates','coords','coordenadas','localizacao','latlng'];
+    for (i = 0; i < keys.length; i++){
+      if (names.indexOf(keys[i].toLowerCase()) >= 0){ var q = neoGeom(o[keys[i]]); if (q) return q; }
+    }
+    return null;
+  }
+  function neoFlat(props){
+    var out = {};
+    Object.keys(props || {}).forEach(function(k){
+      var v = props[k];
+      if (v == null || typeof v === 'object') return;
+      out[k] = v;
+    });
+    return out;
+  }
+  function neoFromJson(data){
+    var recs = [];
+    function add(props, pt){ if (pt) recs.push({ p: neoFlat(props), lon: pt.lon, lat: pt.lat }); }
+    function walk(d, depth){
+      if (recs.length || depth > 4 || d == null) return;
+      if (Array.isArray(d)){
+        if (d.length && typeof d[0] === 'object' && d[0] !== null){
+          d.forEach(function(it){
+            if (!it || typeof it !== 'object') return;
+            if (it.type === 'Feature') add(it.properties, neoGeom(it.geometry));
+            else if (it.attributes && it.geometry) add(it.attributes, neoGeom(it.geometry));
+            else add(it, neoFindPoint(it));
+          });
+        }
+        if (recs.length) return;
+        d.forEach(function(it){ if (it && typeof it === 'object') walk(it, depth + 1); });
+        return;
+      }
+      if (typeof d === 'object'){
+        if (d.type === 'Feature'){ add(d.properties, neoGeom(d.geometry)); return; }
+        if (Array.isArray(d.features)){ walk(d.features, depth + 1); if (recs.length) return; }
+        Object.keys(d).forEach(function(k){ if (!recs.length) walk(d[k], depth + 1); });
+      }
+    }
+    walk(data, 0);
+    return recs;
+  }
+  function neoFromCsv(text){
+    var lines = text.split(/\r?\n/).filter(function(l){ return l.trim(); });
+    if (lines.length < 2) return [];
+    var sep = [';', '\t', ','].sort(function(a, b){ return lines[0].split(b).length - lines[0].split(a).length; })[0];
+    var head = lines[0].split(sep).map(function(h){ return h.replace(/^"|"$/g, '').trim(); });
+    var recs = [];
+    for (var i = 1; i < lines.length; i++){
+      var cells = lines[i].split(sep).map(function(c){ return c.replace(/^"|"$/g, '').trim(); });
+      var o = {};
+      head.forEach(function(h, j){ o[h || ('col' + j)] = cells[j] != null ? cells[j] : ''; });
+      var pt = neoFindPoint(o);
+      if (pt) recs.push({ p: neoFlat(o), lon: pt.lon, lat: pt.lat });
+    }
+    return recs;
+  }
+  function neoParse(text){
+    text = text.trim();
+    if (!text) return [];
+    if (text.charAt(0) === '{' || text.charAt(0) === '['){
+      var data = null;
+      try { data = JSON.parse(text); } catch(e){ data = null; }
+      if (data) return neoFromJson(data);
+    }
+    return neoFromCsv(text);
+  }
+  function neoDistinct(key){
+    var m = {};
+    neo.recs.forEach(function(r){ var v = r.p[key]; v = (v == null ? '' : String(v)); m[v] = (m[v] || 0) + 1; });
+    return m;
+  }
+  function neoPickField(){
+    var best = '', bestHits = 0;
+    neo.keys.forEach(function(k){
+      var hits = 0;
+      neo.recs.forEach(function(r){ if (neoStatusOf(r.p[k]) ) hits++; });
+      if (hits > bestHits){ bestHits = hits; best = k; }
+    });
+    if (best) return best;
+    var cand = '', candN = 1e9;
+    neo.keys.forEach(function(k){
+      var n = Object.keys(neoDistinct(k)).length;
+      if (n >= 2 && n <= 10 && n < candN && !/^(id|objectid|fid|lat|lon|x|y)/i.test(k)){ cand = k; candN = n; }
+    });
+    return cand;
+  }
+  function neoStatusFor(r){
+    if (!neo.field) return 'Sem status';
+    var v = r.p[neo.field]; v = (v == null ? '' : String(v));
+    return neo.map[v] || 'Sem status';
+  }
+  function neoRenderMap(){
+    var box = document.getElementById('neoMapBox');
+    box.innerHTML = '';
+    if (!neo.field){ box.textContent = 'Nenhum campo de status encontrado: todos entram como "Sem status".'; return; }
+    var dist = neoDistinct(neo.field), vals = Object.keys(dist);
+    if (vals.length > 30){
+      box.textContent = 'Esse campo tem muitos valores diferentes (' + vals.length + '). Escolha outro campo de status acima.';
+      return;
+    }
+    var tb = document.createElement('table');
+    tb.innerHTML = '<thead><tr><th>Valor no site</th><th style="text-align:right;">Postes</th><th>Significa</th></tr></thead>';
+    var body = document.createElement('tbody');
+    vals.sort(function(a, b){ return dist[b] - dist[a]; }).forEach(function(v){
+      if (!(v in neo.map)) neo.map[v] = neoStatusOf(v) || 'Sem status';
+      var tr = document.createElement('tr');
+      var td1 = document.createElement('td'); td1.textContent = v === '' ? '(vazio)' : v;
+      var td2 = document.createElement('td'); td2.style.textAlign = 'right'; td2.textContent = dist[v].toLocaleString('pt-BR');
+      var td3 = document.createElement('td');
+      var sel = document.createElement('select');
+      NEO_STATUS.forEach(function(s){ var o = document.createElement('option'); o.value = s; o.textContent = s; if (neo.map[v] === s) o.selected = true; sel.appendChild(o); });
+      sel.addEventListener('change', function(){ neo.map[v] = sel.value; neoRenderChecks(); });
+      td3.appendChild(sel);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); body.appendChild(tr);
+    });
+    tb.appendChild(body);
+    box.appendChild(tb);
+  }
+  function neoCounts(){
+    var c = {}; NEO_STATUS.forEach(function(s){ c[s] = 0; });
+    neo.recs.forEach(function(r){ c[neoStatusFor(r)]++; });
+    return c;
+  }
+  function neoRenderChecks(){
+    var box = document.getElementById('neoChecks');
+    box.innerHTML = '';
+    var c = neoCounts(), total = 0;
+    NEO_STATUS.forEach(function(s){
+      if (!c[s]) return;
+      if (!(s in neo.on)) neo.on[s] = true;
+      var lab = document.createElement('label');
+      lab.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!neo.on[s];
+      cb.addEventListener('change', function(){ neo.on[s] = cb.checked; neoUpdateButtons(); });
+      var dot = document.createElement('span');
+      dot.style.cssText = 'width:11px;height:11px;border-radius:50%;border:1px solid #444;display:inline-block;background:' + ({verde:'#00a000',amarelo:'#ffe600',vermelho:'#e60000',cinza:'#8c8c8c'})[NEO_ICON_OF[s]];
+      lab.appendChild(cb); lab.appendChild(dot);
+      lab.appendChild(document.createTextNode(s + ' (' + c[s].toLocaleString('pt-BR') + ')'));
+      box.appendChild(lab); total += c[s];
+    });
+    neoUpdateButtons();
+  }
+  function neoSelected(){
+    return neo.recs.filter(function(r){ return neo.on[neoStatusFor(r)]; });
+  }
+  function neoUpdateButtons(){
+    var n = neoSelected().length;
+    document.getElementById('neoKmz').textContent = 'Baixar KMZ (' + n.toLocaleString('pt-BR') + ' poste' + (n === 1 ? '' : 's') + ')';
+    document.getElementById('neoKmz').disabled = !n;
+    document.getElementById('neoCsv').disabled = !n;
+    document.getElementById('neoToApp').disabled = !n;
+  }
+  function neoSetMsg(m, kind){
+    var el = document.getElementById('neoMsg');
+    el.textContent = m;
+    el.style.color = kind === 'err' ? 'var(--bad)' : (kind === 'ok' ? 'var(--good)' : '');
+  }
+  function neoRead(text){
+    var recs = [];
+    try { recs = neoParse(text); } catch(e){ recs = []; }
+    if (!recs.length){
+      document.getElementById('neoResult').style.display = 'none';
+      neoSetMsg('Não achei postes com latitude/longitude nesse texto. Confira se você copiou a resposta certa (a que tem as coordenadas dos postes) e cole de novo.', 'err');
+      return;
+    }
+    neo.recs = recs; neo.map = {}; neo.on = {};
+    var ks = {};
+    recs.forEach(function(r){ Object.keys(r.p).forEach(function(k){ ks[k] = 1; }); });
+    neo.keys = Object.keys(ks);
+    neo.field = neoPickField();
+    var sel = document.getElementById('neoStatusField');
+    sel.innerHTML = '';
+    var none = document.createElement('option'); none.value = ''; none.textContent = '(sem status)'; sel.appendChild(none);
+    neo.keys.forEach(function(k){
+      var o = document.createElement('option'); o.value = k;
+      o.textContent = k + ' (' + Object.keys(neoDistinct(k)).length + ' valores)';
+      if (k === neo.field) o.selected = true;
+      sel.appendChild(o);
+    });
+    document.getElementById('neoResult').style.display = 'block';
+    neoRenderMap(); neoRenderChecks();
+    neoSetMsg(recs.length.toLocaleString('pt-BR') + ' poste(s) lido(s)' + (neo.field ? ' (status no campo "' + neo.field + '")' : '. Não identifiquei o campo de status: escolha abaixo.') , 'ok');
+  }
+  function neoCity(r){
+    var f = null;
+    try { f = findCity(r.lon, r.lat); } catch(e){ f = null; }
+    if (f) return f.name;
+    try { var nf = findNearestCity(r.lon, r.lat); return nf && nf.name ? nf.name : ''; } catch(e){ return ''; }
+  }
+  function neoId(r, i){
+    var keys = Object.keys(r.p);
+    for (var k = 0; k < keys.length; k++){
+      if (/^(id|codigo|cod|cod_poste|poste|num_poste|numero|nr_poste|barramento|id_poste)$/i.test(keys[k]) && r.p[keys[k]] !== '') return String(r.p[keys[k]]);
+    }
+    for (var j = 0; j < keys.length; j++){
+      if (/id|codigo|poste|numero/i.test(keys[j]) && keys[j] !== neo.field && r.p[keys[j]] !== '') return String(r.p[keys[j]]);
+    }
+    return 'P' + (i + 1);
+  }
+  function neoBuildKml(list){
+    var STY = '';
+    ['verde','amarelo','vermelho','cinza'].forEach(function(c){
+      STY += '<Style id="neo_' + c + '"><IconStyle><scale>0.55</scale><Icon><href>files/' + c + '.png</href></Icon>' +
+        '<hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle></Style>\n';
+    });
+    var byCity = document.getElementById('neoGroup').value === 'city';
+    var groups = {}, order = [];
+    list.forEach(function(r, i){
+      var st = neoStatusFor(r), city = neoCity(r) || 'Sem cidade';
+      var id = neoId(r, i);
+      var desc = 'Status: ' + st + '&#10;Cidade: ' + escapeXml(city);
+      Object.keys(r.p).slice(0, 14).forEach(function(k){ if (r.p[k] !== '') desc += '&#10;' + escapeXml(k) + ': ' + escapeXml(String(r.p[k])); });
+      var pm = '<Placemark><name>' + escapeXml(id) + '</name><styleUrl>#neo_' + NEO_ICON_OF[st] + '</styleUrl>' +
+        '<description><![CDATA[' + desc.replace(/&#10;/g, '<br>') + ']]></description>' +
+        '<Point><coordinates>' + r.lon.toFixed(9) + ',' + r.lat.toFixed(9) + ',0</coordinates></Point></Placemark>\n';
+      var key = byCity ? (city + '\u0001' + st) : st;
+      if (!groups[key]){ groups[key] = { city: city, st: st, pms: [] }; order.push(key); }
+      groups[key].pms.push(pm);
+    });
+    var kml = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Postes NeoCompartilha</name>\n' + STY;
+    if (byCity){
+      var cities = {}, corder = [];
+      order.forEach(function(k){ var g = groups[k]; if (!cities[g.city]){ cities[g.city] = []; corder.push(g.city); } cities[g.city].push(g); });
+      corder.sort().forEach(function(c){
+        var tot = 0; cities[c].forEach(function(g){ tot += g.pms.length; });
+        kml += '<Folder><name>' + escapeXml(c) + ' (' + tot + ')</name>\n';
+        NEO_STATUS.forEach(function(s){
+          cities[c].forEach(function(g){ if (g.st === s) kml += '<Folder><name>' + escapeXml(s) + ' (' + g.pms.length + ')</name>\n' + g.pms.join('') + '</Folder>\n'; });
+        });
+        kml += '</Folder>\n';
+      });
+    } else {
+      NEO_STATUS.forEach(function(s){
+        order.forEach(function(k){ var g = groups[k]; if (g.st === s) kml += '<Folder><name>' + escapeXml(s) + ' (' + g.pms.length + ')</name>\n' + g.pms.join('') + '</Folder>\n'; });
+      });
+    }
+    return kml + '</Document></kml>';
+  }
+  function neoMakeKmz(kml){
+    var files = {};
+    try {
+      if (window.fflate && window.fflate.zipSync){
+        files['doc.kml'] = window.fflate.strToU8(kml);
+        Object.keys(NEO_ICONS).forEach(function(c){ files['files/' + c + '.png'] = [base64ToBytes(NEO_ICONS[c]), { level:0 }]; });
+        return window.fflate.zipSync(files, { level:6 });
+      }
+    } catch(e){}
+    var entries = [{ name:'doc.kml', data: kml }];
+    Object.keys(NEO_ICONS).forEach(function(c){ entries.push({ name:'files/' + c + '.png', data: base64ToBytes(NEO_ICONS[c]) }); });
+    return buildZip(entries);
+  }
+  function neoCsvText(list){
+    var keys = neo.keys.slice(0, 20);
+    var q = function(v){ v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var out = [['id','latitude','longitude','status','cidade'].concat(keys).map(q).join(';')];
+    list.forEach(function(r, i){
+      out.push([neoId(r, i), r.lat.toFixed(7), r.lon.toFixed(7), neoStatusFor(r), neoCity(r)].concat(keys.map(function(k){ return r.p[k]; })).map(q).join(';'));
+    });
+    return '\ufeff' + out.join('\r\n');
+  }
+  document.getElementById('neoRead').addEventListener('click', function(){ neoRead(document.getElementById('neoInput').value); });
+  document.getElementById('neoClear').addEventListener('click', function(){
+    document.getElementById('neoInput').value = ''; document.getElementById('neoResult').style.display = 'none';
+    neo = { recs:[], keys:[], field:'', map:{}, on:{} }; neoSetMsg('', '');
+  });
+  document.getElementById('neoFile').addEventListener('change', function(ev){
+    var f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function(){ document.getElementById('neoInput').value = String(fr.result).slice(0, 2000000); neoRead(String(fr.result)); };
+    fr.readAsText(f);
+    ev.target.value = '';
+  });
+  document.getElementById('neoStatusField').addEventListener('change', function(ev){
+    neo.field = ev.target.value; neo.map = {}; neo.on = {}; neoRenderMap(); neoRenderChecks();
+  });
+  document.getElementById('neoKmz').addEventListener('click', function(){
+    var list = neoSelected();
+    if (!list.length) return;
+    var kmz = neoMakeKmz(neoBuildKml(list));
+    offerDownload(kmz, 'postes-neocompartilha', 'txt', 'txt', 'KMZ pronto (' + list.length.toLocaleString('pt-BR') + ' postes); abra no Google Earth.', 'kmz');
+  });
+  document.getElementById('neoCsv').addEventListener('click', function(){
+    var list = neoSelected();
+    if (!list.length) return;
+    offerDownload(neoCsvText(list), 'postes-neocompartilha', 'csv', 'txt', 'Tabela pronta (' + list.length.toLocaleString('pt-BR') + ' postes).', 'csv');
+  });
+  document.getElementById('neoToApp').addEventListener('click', function(){
+    var list = neoSelected();
+    if (!list.length) return;
+    var lines = list.map(function(r, i){ return neoId(r, i).replace(/\s+/g, '_') + '\t' + r.lat.toFixed(7) + '\t' + r.lon.toFixed(7); });
+    document.getElementById('input').value = lines.join('\n');
+    els.btnClassify.click();
+    window.scrollTo(0, 0);
   });
 
   function copyToClipboard(text, label){
