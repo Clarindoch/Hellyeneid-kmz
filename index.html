@@ -419,11 +419,25 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
 
   <div class="panel" id="neoPanel">
     <h2><span class="n">6</span> Importar do NeoCompartilha (disponibilidade dos postes)</h2>
-    <p class="hint" style="margin-top:0;">Aqui você transforma os postes do NeoCompartilha (verde = Dispon&iacute;vel, amarelo = Poss&iacute;vel Disponibilidade, vermelho = Indispon&iacute;vel) em KMZ. O programa n&atilde;o consegue entrar sozinho no site, ent&atilde;o voc&ecirc; copia os dados dele e cola aqui:</p>
-    <ol class="hint" style="margin:0 0 12px 18px;padding:0;line-height:1.55;">
-      <li>Abra o NeoCompartilha no computador, aperte <b>F12</b> e clique na aba <b>Rede</b> (Network). Filtre por <b>Fetch/XHR</b>.</li>
-      <li>D&ecirc; zoom no mapa at&eacute; aparecerem os postes da &aacute;rea que voc&ecirc; quer. V&atilde;o surgir pedidos na lista.</li>
-      <li>Clique no pedido que traz os postes (em geral o maior, que devolve um texto em JSON). Na aba <b>Resposta</b> (Response), selecione tudo (Ctrl+A), copie (Ctrl+C) e cole abaixo.</li>
+    <p class="hint" style="margin-top:0;">Aqui voc&ecirc; transforma os postes do NeoCompartilha (verde = Dispon&iacute;vel, amarelo = Poss&iacute;vel Disponibilidade, vermelho = Indispon&iacute;vel) em KMZ. O programa n&atilde;o entra sozinho no site: voc&ecirc; <b>copia</b> os dados dele e <b>cola</b> aqui. &Eacute; simples, siga os passos:</p>
+    <p style="margin:10px 0 4px;font-weight:600;font-size:14px;">Parte 1 &ndash; Copiar os dados no site (no computador, pelo Chrome)</p>
+    <ol class="hint" style="margin:0 0 10px 20px;padding:0;line-height:1.6;">
+      <li>Abra o NeoCompartilha no Chrome e espere o mapa aparecer.</li>
+      <li>Aperte a tecla <b>F12</b>. Abre um painel do lado ou embaixo da tela. Isso &eacute; normal e n&atilde;o estraga nada.</li>
+      <li>No topo desse painel, clique na aba <b>Rede</b> (ou <b>Network</b>, se estiver em ingl&ecirc;s).</li>
+      <li>Nessa aba, clique em <b>Fetch/XHR</b>. Ela mostra s&oacute; os pedidos que o site faz para buscar dados.</li>
+      <li>Atualize a p&aacute;gina (<b>F5</b>) e depois d&ecirc; <b>zoom no mapa</b> na regi&atilde;o que voc&ecirc; quer. Cada vez que o mapa carrega postes, aparece uma linha nova na lista do painel.</li>
+      <li>Procure a linha que trouxe os postes. Em geral &eacute; a <b>maior</b> (olhe a coluna &ldquo;Tamanho&rdquo;, ou &ldquo;Size&rdquo;). Clique nela.</li>
+      <li>Clique com o bot&atilde;o direito nessa linha, depois em <b>Copiar</b> e em <b>Copiar resposta</b> (Copy &rarr; Copy response). Se n&atilde;o achar esse menu: clique na linha, abra a aba <b>Resposta</b> (Response), aperte <b>Ctrl+A</b> e depois <b>Ctrl+C</b>.</li>
+    </ol>
+    <p class="hint" style="margin:0 0 12px;">Se aparecer s&oacute; um texto curto, essa n&atilde;o &eacute; a linha certa: tente outra, at&eacute; achar a que tem v&aacute;rios postes com n&uacute;meros parecidos com coordenadas, como <code>-12.97...</code> e <code>-38.51...</code>. O site pode entregar s&oacute; os postes que est&atilde;o na tela; se for assim, repita por regi&atilde;o.</p>
+    <p style="margin:10px 0 4px;font-weight:600;font-size:14px;">Parte 2 &ndash; Usar aqui no programa</p>
+    <ol class="hint" style="margin:0 0 10px 20px;padding:0;line-height:1.6;">
+      <li>Clique na caixa abaixo e cole com <b>Ctrl+V</b> (ou use &ldquo;Carregar arquivo&rdquo;, se tiver salvo o texto num arquivo).</li>
+      <li>Clique em <b>Ler dados</b>. O programa diz quantos postes leu.</li>
+      <li><b>Confira os postes lidos</b> na lista logo abaixo: cada barramento aparece com o status (Dispon&iacute;vel, Poss&iacute;vel Disponibilidade ou Indispon&iacute;vel). Voc&ecirc; pode filtrar por status e buscar um barramento.</li>
+      <li>Se o site usar n&uacute;meros (1, 2, 3) em vez de palavras, aparece uma tabelinha para voc&ecirc; dizer o que cada n&uacute;mero significa.</li>
+      <li>Marque quais status entram no KMZ, escolha as pastas (por status ou por cidade e status) e clique em <b>Baixar KMZ</b>.</li>
     </ol>
     <textarea id="neoInput" placeholder="Cole aqui o JSON/GeoJSON/CSV copiado do NeoCompartilha, ou carregue um arquivo salvo." style="width:100%;min-height:120px;"></textarea>
     <div class="row" style="margin-top:8px;">
@@ -445,6 +459,23 @@ B410319&#9;-12,8455654859999&#9;-38,275402587"></textarea>
             <select id="neoGroup"><option value="status">Status</option><option value="city">Cidade e status</option></select>
           </label>
         </div>
+      </div>
+      <div style="margin:10px 0;">
+        <b style="font-size:13px;">Conferir os postes lidos</b>
+        <div class="row" style="margin:6px 0;align-items:center;">
+          <label style="font-size:13px;">Mostrar:&nbsp;
+            <select id="neoFilter">
+              <option value="">Todos</option>
+              <option value="Dispon&iacute;vel">Dispon&iacute;vel</option>
+              <option value="Poss&iacute;vel Disponibilidade">Poss&iacute;vel Disponibilidade</option>
+              <option value="Indispon&iacute;vel">Indispon&iacute;vel</option>
+              <option value="Sem status">Sem status</option>
+            </select>
+          </label>
+          <input type="text" id="neoSearch" placeholder="Buscar barramento" style="max-width:220px;">
+        </div>
+        <div id="neoTable" class="table-scroll"></div>
+        <p class="hint" id="neoTableInfo" style="margin:6px 0 0;"></p>
       </div>
       <div class="row">
         <button class="btn-accent" id="neoKmz" type="button">Baixar KMZ</button>
@@ -1737,6 +1768,7 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
   }
   function neoRenderChecks(){
     var box = document.getElementById('neoChecks');
+    neoRenderTable();
     box.innerHTML = '';
     var c = neoCounts(), total = 0;
     NEO_STATUS.forEach(function(s){
@@ -1754,6 +1786,47 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     });
     neoUpdateButtons();
   }
+  var NEO_ROWS = 200;
+  function neoRenderTable(){
+    var box = document.getElementById('neoTable'), info = document.getElementById('neoTableInfo');
+    if (!box) return;
+    var f = document.getElementById('neoFilter').value, q = neoNorm(document.getElementById('neoSearch').value);
+    var rows = [], total = 0, i, r, st, id;
+    for (i = 0; i < neo.recs.length; i++){
+      r = neo.recs[i]; st = neoStatusFor(r);
+      if (f && st !== f) continue;
+      id = null;
+      if (q){ id = neoId(r, i); if (neoNorm(id).indexOf(q) < 0) continue; }
+      total++;
+      if (rows.length < NEO_ROWS) rows.push({ r:r, i:i, id: id != null ? id : neoId(r, i), st: st });
+    }
+    var dotc = { verde:'#00a000', amarelo:'#ffe600', vermelho:'#e60000', cinza:'#8c8c8c' };
+    var tb = document.createElement('table');
+    tb.innerHTML = '<thead><tr><th>Barramento</th><th>Status</th><th>Cidade</th><th>Latitude</th><th>Longitude</th></tr></thead>';
+    var body = document.createElement('tbody');
+    rows.forEach(function(x){
+      var tr = document.createElement('tr');
+      var c1 = document.createElement('td'); c1.textContent = x.id;
+      var c2 = document.createElement('td');
+      var dot = document.createElement('span');
+      dot.style.cssText = 'width:11px;height:11px;border-radius:50%;border:1px solid #444;display:inline-block;margin-right:6px;vertical-align:-1px;background:' + dotc[NEO_ICON_OF[x.st]];
+      c2.appendChild(dot); c2.appendChild(document.createTextNode(x.st));
+      var c3 = document.createElement('td'); c3.textContent = neoCity(x.r);
+      var c4 = document.createElement('td'); c4.textContent = x.r.lat.toFixed(6);
+      var c5 = document.createElement('td'); c5.textContent = x.r.lon.toFixed(6);
+      [c1, c2, c3, c4, c5].forEach(function(c){ tr.appendChild(c); });
+      body.appendChild(tr);
+    });
+    tb.appendChild(body);
+    box.innerHTML = '';
+    box.appendChild(tb);
+    info.textContent = total
+      ? ('Mostrando ' + rows.length.toLocaleString('pt-BR') + ' de ' + total.toLocaleString('pt-BR') + ' poste(s)' + (total > rows.length ? '. Use o filtro ou a busca para ver os outros.' : '.'))
+      : 'Nenhum poste com esse filtro.';
+  }
+  document.getElementById('neoFilter').addEventListener('change', neoRenderTable);
+  document.getElementById('neoSearch').addEventListener('input', neoRenderTable);
+
   function neoSelected(){
     return neo.recs.filter(function(r){ return neo.on[neoStatusFor(r)]; });
   }
