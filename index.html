@@ -1313,41 +1313,67 @@ const MUNI_RAW = [{"n":"Abaíra","t":"Polygon","c":[[[-41.64769,-13.17868],[-41.
     ]);
   }
 
+  function dlErrorMsg(code, bytes){
+    var mb = (bytes/1048576).toFixed(1).replace('.',',');
+    if (code === 'too_large') return 'Arquivo grande demais (' + mb + ' MB; o limite é 16 MB). Marque menos cidades no KMZ e tente de novo.';
+    if (code === 'rate_limited') return 'Já existe uma confirmação de download aberta. Responda a ela (ou espere um instante) e clique de novo.';
+    if (code === 'rejected_extension' || code === 'bad_request' || code === 'transform_error') return 'O arquivo foi recusado (' + code + '). Use "Ver / copiar" abaixo.';
+    return 'O download foi bloqueado neste modo de visualização (' + code + '). Use "Ver / copiar" abaixo.';
+  }
   async function offerDownload(data, baseName, preferredExt, fallbackExt, okMsg){
+    var bytes = (data && data.byteLength !== undefined) ? data.byteLength : String(data).length;
+    setStatus('Preparando o download… (se aparecer uma confirmação, aceite para salvar)', '');
     var dl = null;
     try { dl = await window.claude.use('downloads'); } catch(e){ dl = null; }
     if (!dl){
-      setStatus('Download automático não está disponível aqui — use "Ver / copiar" abaixo.', 'err');
+      setStatus('Este modo de abrir o programa não permite salvar arquivos. Abra o link do artifact direto no navegador ou no app do Claude, ou use "Ver / copiar" abaixo.', 'err');
       return;
     }
     try {
       await dl.save({ filename: baseName+'.'+preferredExt, data: data });
       setStatus(okMsg + ' (.'+preferredExt+')', 'ok');
     } catch (err) {
-      if (err && err.code === 'extension_not_enabled'){
+      var code = err && err.code;
+      if (code === 'extension_not_enabled'){
         try {
           await dl.save({ filename: baseName+'.'+fallbackExt, data: data });
           setStatus(okMsg + ' — salvo como .'+fallbackExt+'. Renomeie para .'+preferredExt+' depois de baixar.', 'ok');
         } catch(err2){
-          setStatus('Não foi possível baixar (' + (err2 && err2.code) + '). Use "Ver / copiar" abaixo.', 'err');
+          if (err2 && err2.code === 'declined') setStatus('Download cancelado.', '');
+          else setStatus(dlErrorMsg(err2 && err2.code, bytes), 'err');
         }
-      } else if (err && err.code === 'declined'){
+      } else if (code === 'declined'){
         setStatus('Download cancelado.', '');
       } else {
-        setStatus('Não foi possível baixar (' + (err && err.code) + '). Use "Ver / copiar" abaixo.', 'err');
+        setStatus(dlErrorMsg(code, bytes), 'err');
       }
     }
   }
 
-  els.btnKml.addEventListener('click', function(){
-    if (!lastResult) return;
-    if (!selectedCities().length){ setStatus('Marque ao menos uma cidade para gerar o KMZ.', 'err'); return; }
-    var kmz = buildZip([
-      { name:'doc.kml', data: buildKML() },
+  function makeKmz(kml){
+    try {
+      if (window.fflate && window.fflate.zipSync){
+        var files = {};
+        files['doc.kml'] = window.fflate.strToU8(kml);
+        files['files/dot.png'] = [base64ToBytes(DOT_PNG_B64), { level:0 }];
+        files['files/dot-coelba.png'] = [base64ToBytes(DOT_COELBA_PNG_B64), { level:0 }];
+        return window.fflate.zipSync(files, { level:6 });
+      }
+    } catch(e){ /* cai para o zip simples abaixo */ }
+    return buildZip([
+      { name:'doc.kml', data: kml },
       { name:'files/dot.png', data: base64ToBytes(DOT_PNG_B64) },
       { name:'files/dot-coelba.png', data: base64ToBytes(DOT_COELBA_PNG_B64) }
     ]);
-    els.rawOut.value = buildKML();
+  }
+
+
+  els.btnKml.addEventListener('click', function(){
+    if (!lastResult) return;
+    if (!selectedCities().length){ setStatus('Marque ao menos uma cidade para gerar o KMZ.', 'err'); return; }
+    var kml = buildKML();
+    var kmz = makeKmz(kml);
+    els.rawOut.value = kml;
     offerDownload(kmz, kmzFileName(), 'txt', 'txt', 'KMZ pronto (' + selectedCities().length + ' cidade(s)) — renomeie de .txt para .kmz e abra no Google Earth.');
   });
 
